@@ -1,0 +1,2 @@
+*.files.tar.zst filter=lfs diff=lfs merge=lfs -text
+x86_64/*.files.tar.zst filter=lfs diff=lfs merge=lfs -text
