@@ -12,13 +12,6 @@ Packages live in `src/<pkgname>/` with their `PKGBUILD`. Builds output `.pkg.tar
 ./build.sh <pkgname>
 ```
 
-## Update Repo Database
-
-```bash
-repo-add x86_64/myrepo.db.tar.zst x86_64/*.pkg.tar.zst
-git add . && git commit -m "feat(pkg) <pkgname> added/updated" && git push
-```
-
 ## Using the Repo
 Add to `/etc/pacman.conf` (before other repos for priority):
 ```
