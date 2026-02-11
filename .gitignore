@@ -1,0 +1,9 @@
+/src/*/src/
+/src/*/pkg/
+/src/*/build/
+/src/*/*.log
+/src/*/*.AppImage*
+/src/*/*.deb
+/src/*/*.tmp
+/src/*/.cache/
+/src/*/.*.swp
