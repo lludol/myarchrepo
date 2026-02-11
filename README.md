@@ -17,7 +17,7 @@ Add to `/etc/pacman.conf` (before other repos for priority):
 ```
 [myrepo]
 SigLevel = Optional TrustAll
-Server = https://raw.githubusercontent.com/lludol/myarchrepo/main/x86_64/
+Server = https://lludol.github.io/myarchrepo/x86_64/
 ```
 
 ### Install/Upgrade
