@@ -1,0 +1,13 @@
+[Unit]
+Description=Run myarchrepo git pull weekly (Mon 08:00) and on session start
+Persistent=yes
+
+[Timer]
+# Weekly: every Monday at 08:00
+OnCalendar=Mon *-*-* 08:00:00
+# When user session starts (e.g. after login), run after 2 minutes
+OnStartupSec=2min
+AccuracySec=15min
+
+[Install]
+WantedBy=timers.target
