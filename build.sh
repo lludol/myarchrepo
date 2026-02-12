@@ -39,3 +39,6 @@ cd "$REPO_ROOT" || exit 1
 echo "Updating repo database..."
 git lfs pull
 repo-add x86_64/myrepo.db.tar.zst x86_64/*.pkg.tar.zst
+
+echo "Syncing to pacman..."
+./sync.sh

@@ -1,0 +1,13 @@
+[Unit]
+Description=Git pull myarchrepo (git pull + git lfs pull)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/lludol/perso/myarchrepo
+ExecStart=/usr/bin/git pull
+ExecStart=/usr/bin/git lfs pull
+
+[Install]
+WantedBy=default.target
