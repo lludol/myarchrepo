@@ -1,0 +1,14 @@
+[Unit]
+Description=R2 Arch Repo Mount
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Run as root so pacman (root) can access the mount
+ExecStartPre=/bin/mkdir -p /var/cache/rclone-pkg
+ExecStart=/usr/bin/rclone mount cloudflare_pkg:arch/x86_64 /mnt/pkg --config /home/lludol/.config/rclone/rclone.conf --vfs-cache-mode full --cache-dir /var/cache/rclone-pkg --dir-cache-time 72h --file-perms 0644 --dir-perms 0755 --vfs-read-chunk-size 1M
+ExecStop=/bin/fusermount3 -u /mnt/pkg
+
+[Install]
+WantedBy=multi-user.target
