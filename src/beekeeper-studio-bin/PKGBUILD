@@ -1,0 +1,46 @@
+_pkgname="beekeeper-studio"
+pkgname="$_pkgname-bin"
+pkgver=5.5.7
+pkgrel=1
+pkgdesc="Modern and easy to use SQL client for MySQL, Postgres, SQLite, SQL Server, and more"
+arch=('x86_64' 'aarch64')
+url="https://github.com/beekeeper-studio/beekeeper-studio"
+license=(
+  'GPL-3.0-or-later'
+  'LicenseRef-BeekeeperStudioApplicationEULA'
+)
+depends=(
+    'alsa-lib'
+    'gtk3'
+    'nspr'
+    'nss'
+)
+provides=("$_pkgname")
+source=("LICENSE-COMMERCIAL")
+source_x86_64=("${_pkgname}-${pkgver}-x86_64.tar.xz::$url/releases/download/v${pkgver}/${_pkgname}-${pkgver}.pacman")
+source_aarch64=("${_pkgname}-${pkgver}-aarch64.tar.xz::$url/releases/download/v${pkgver}/${_pkgname}-${pkgver}-aarch64.pacman")
+noextract=(
+    "${_pkgname}-${pkgver}-x86_64.tar.xz"
+    "${_pkgname}-${pkgver}-aarch64.tar.xz"
+)
+sha256sums=('5cd8863cfa4a2aef3fe52629780e36d78df3d2c305f346e8008970da9b8ebee2')
+sha256sums_x86_64=('1c6427d96e17803a37be073c0727a4b65a4609880c77abfb85194361bee7be29')
+sha256sums_aarch64=('6fb66be7b4c04a2d8b783dbc8f330f0a701a88b76edef4d0d985cce47899aa3f')
+options=(!strip)
+
+package() {
+    # Install commercial license
+    install -Dm644 LICENSE-COMMERCIAL "${pkgdir}/usr/share/licenses/${pkgname}/BeekeeperStudioApplicationEULA"
+
+    # Extract prebuilt package into pkgdir
+    cd "${srcdir}"
+    bsdtar -xf "${_pkgname}-${pkgver}-${CARCH}.tar.xz" -C "${pkgdir}"
+
+    # Remove prebuilt package metadata files (if they exist)
+    cd "${pkgdir}"
+    rm -f .PKGINFO .MTREE .INSTALL
+
+    # Symlink executable to /usr/bin
+    install -dm0755 "${pkgdir}/usr/bin"
+    ln -s "/opt/Beekeeper Studio/beekeeper-studio" "${pkgdir}/usr/bin/beekeeper-studio"
+}
