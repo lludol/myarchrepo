@@ -72,11 +72,13 @@ jobs:
           echo "Updated PKGBUILD:"
           grep -E '^(pkgver|pkgrel|sha256sums)=' "$PKGBUILD"
 
-      # Skip when SKIP_CREATE_PR is set (e.g. in .secrets when running with act) so local runs don't fail on git push
+      # Skip when SKIP_CREATE_PR is set (e.g. in .secrets when running with act) so local runs don't fail on git push.
+      # GH_API_TOKEN (PAT with repo scope) is required: the default GITHUB_TOKEN cannot create PRs.
       - name: Create Pull Request
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.GH_API_TOKEN }}
           branch: update/amdgpu_top-tui-bin-${{ steps.versions.outputs.latest }}
           title: "chore(amdgpu_top-tui-bin): bump to ${{ steps.versions.outputs.latest }}"
           body: |
