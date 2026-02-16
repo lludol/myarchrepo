@@ -1,0 +1,87 @@
+# Check for new walker release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update walker
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
+        run: |
+          REPO="abenz1267/walker"
+          PKGBUILD="src/walker/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          CURL_OPTS=()
+          [[ -n "${GH_API_TOKEN:-}" ]] && CURL_OPTS=(-H "Authorization: Bearer $GH_API_TOKEN")
+          resp=$(curl -sS "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases/latest")
+          latest=$(echo "$resp" | grep -o '"tag_name": *"[^"]*"' | head -n1 | sed 's/"tag_name": *"v\?\([^"]*\)"/\1/')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest release"
+            exit 1
+          fi
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download tarball and compute checksum
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksum
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          url="https://github.com/abenz1267/walker/archive/refs/tags/v${latest}.tar.gz"
+          curl -sSLo package.tar.gz "$url"
+          sha=$(sha256sum -b package.tar.gz | awk '{ print $1 }')
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "Computed sha256: $sha"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/walker/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          sha="${{ steps.checksum.outputs.sha256 }}"
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha256sums=(.*)/sha256sums=(\"${sha}\")/" "$PKGBUILD"
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel|sha256sums)=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/walker-${{ steps.versions.outputs.latest }}
+          title: "chore(walker): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **walker**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `sha256sums` updated.
+          add-paths: src/walker/PKGBUILD
+          commit-message: "chore(walker): bump to ${{ steps.versions.outputs.latest }}"

@@ -58,3 +58,21 @@ sudo pacman -Syu     # Upgrade all, including from repo
 ```
 
 List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
+
+## TODO: Auto-update actions
+
+| Package | Has action |
+|---------|------------|
+| amdgpu_top-tui-bin | ✅ |
+| beekeeper-studio-bin | ✅ |
+| cursor-bin | ❌ |
+| fastmail | ❌ |
+| mongodb-compass-bin | ❌ |
+| overskride | ✅ |
+| slack-desktop-wayland | ❌ |
+| ticktick | ❌ |
+| tradingview | ❌ |
+| trezor-suite | ✅ |
+| visual-studio-code-bin | ✅ |
+| walker | ✅ |
+| zoom | ❌ |

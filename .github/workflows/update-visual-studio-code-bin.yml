@@ -1,0 +1,147 @@
+# Check for new Visual Studio Code release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+# Version from microsoft/vscode GitHub releases; binaries from update.code.visualstudio.com.
+
+name: Update visual-studio-code-bin
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
+        run: |
+          REPO="microsoft/vscode"
+          PKGBUILD="src/visual-studio-code-bin/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          CURL_OPTS=()
+          [[ -n "${GH_API_TOKEN:-}" ]] && CURL_OPTS=(-H "Authorization: Bearer $GH_API_TOKEN")
+          resp=$(curl -sS "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases/latest")
+          latest=$(echo "$resp" | grep -o '"tag_name": *"[^"]*"' | head -n1 | sed 's/"tag_name": *"v\?\([^"]*\)"/\1/')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest release"
+            exit 1
+          fi
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download resources and compute checksums
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          PKGDIR="src/visual-studio-code-bin"
+          BASE="https://raw.githubusercontent.com/microsoft/vscode/${latest}/resources/linux"
+
+          # Desktop and workspace resources from GitHub
+          curl -sSLo "${PKGDIR}/code.desktop" "${BASE}/code.desktop"
+          curl -sSLo "${PKGDIR}/code-url-handler.desktop" "${BASE}/code-url-handler.desktop"
+          curl -sSLo "${PKGDIR}/code-workspace.xml" "${BASE}/code-workspace.xml"
+
+          sha_desktop=$(sha256sum -b "${PKGDIR}/code.desktop" | awk '{ print $1 }')
+          sha_url_handler=$(sha256sum -b "${PKGDIR}/code-url-handler.desktop" | awk '{ print $1 }')
+          sha_workspace=$(sha256sum -b "${PKGDIR}/code-workspace.xml" | awk '{ print $1 }')
+          sha_script=$(sha256sum -b "${PKGDIR}/visual-studio-code-bin.sh" | awk '{ print $1 }')
+
+          # Binaries from Microsoft update server
+          curl -sSLo "${PKGDIR}/code_x64.tar.gz" "https://update.code.visualstudio.com/${latest}/linux-x64/stable"
+          curl -sSLo "${PKGDIR}/code_arm64.tar.gz" "https://update.code.visualstudio.com/${latest}/linux-arm64/stable"
+          curl -sSLo "${PKGDIR}/code_armhf.tar.gz" "https://update.code.visualstudio.com/${latest}/linux-armhf/stable"
+
+          sha_x64=$(sha256sum -b "${PKGDIR}/code_x64.tar.gz" | awk '{ print $1 }')
+          sha_arm64=$(sha256sum -b "${PKGDIR}/code_arm64.tar.gz" | awk '{ print $1 }')
+          sha_armhf=$(sha256sum -b "${PKGDIR}/code_armhf.tar.gz" | awk '{ print $1 }')
+
+          echo "sha_desktop=$sha_desktop" >> "$GITHUB_OUTPUT"
+          echo "sha_url_handler=$sha_url_handler" >> "$GITHUB_OUTPUT"
+          echo "sha_workspace=$sha_workspace" >> "$GITHUB_OUTPUT"
+          echo "sha_script=$sha_script" >> "$GITHUB_OUTPUT"
+          echo "sha_x64=$sha_x64" >> "$GITHUB_OUTPUT"
+          echo "sha_arm64=$sha_arm64" >> "$GITHUB_OUTPUT"
+          echo "sha_armhf=$sha_armhf" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGDIR="src/visual-studio-code-bin"
+          rm -f "${PKGDIR}/code.desktop" "${PKGDIR}/code-url-handler.desktop" "${PKGDIR}/code-workspace.xml"
+          rm -f "${PKGDIR}/code_x64.tar.gz" "${PKGDIR}/code_arm64.tar.gz" "${PKGDIR}/code_armhf.tar.gz"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/visual-studio-code-bin/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          sha_desktop="${{ steps.checksums.outputs.sha_desktop }}"
+          sha_url_handler="${{ steps.checksums.outputs.sha_url_handler }}"
+          sha_workspace="${{ steps.checksums.outputs.sha_workspace }}"
+          sha_script="${{ steps.checksums.outputs.sha_script }}"
+          sha_x64="${{ steps.checksums.outputs.sha_x64 }}"
+          sha_arm64="${{ steps.checksums.outputs.sha_arm64 }}"
+          sha_armhf="${{ steps.checksums.outputs.sha_armhf }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+
+          # Replace sha256sums block (4 entries)
+          cat > /tmp/sha256block << EOF
+          sha256sums=('${sha_desktop}'
+                      '${sha_url_handler}'
+                      '${sha_workspace}'
+                      '${sha_script}')
+          EOF
+          awk '
+            /^sha256sums=/ { inblock=1; system("cat /tmp/sha256block"); next }
+            inblock && /\)/ { inblock=0; next }
+            inblock { next }
+            { print }
+          ' "$PKGBUILD" > "$PKGBUILD.new"
+          mv "$PKGBUILD.new" "$PKGBUILD"
+
+          sed -i "s/^sha256sums_x86_64=(.*/sha256sums_x86_64=('${sha_x64}')/" "$PKGBUILD"
+          sed -i "s/^sha256sums_aarch64=(.*/sha256sums_aarch64=('${sha_arm64}')/" "$PKGBUILD"
+          sed -i "s/^sha256sums_armv7h=(.*/sha256sums_armv7h=('${sha_armhf}')/" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A 5 '^sha256sums=' "$PKGBUILD" | head -6
+          grep -E '^sha256sums_(x86_64|aarch64|armv7h)=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/visual-studio-code-bin-${{ steps.versions.outputs.latest }}
+          title: "chore(visual-studio-code-bin): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **visual-studio-code-bin**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `sha256sums` updated (resources + x86_64, aarch64, armv7h).
+          add-paths: src/visual-studio-code-bin/PKGBUILD
+          commit-message: "chore(visual-studio-code-bin): bump to ${{ steps.versions.outputs.latest }}"

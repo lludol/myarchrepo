@@ -1,0 +1,134 @@
+# Check for new Trezor Suite release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update trezor-suite
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
+        run: |
+          REPO="trezor/trezor-suite"
+          PKGBUILD="src/trezor-suite/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          CURL_OPTS=()
+          [[ -n "${GH_API_TOKEN:-}" ]] && CURL_OPTS=(-H "Authorization: Bearer $GH_API_TOKEN")
+          resp=$(curl -sS "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases/latest")
+          latest=$(echo "$resp" | grep -o '"tag_name": *"[^"]*"' | head -n1 | sed 's/"tag_name": *"v\?\([^"]*\)"/\1/')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest release"
+            exit 1
+          fi
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download assets and compute sha512 checksums
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          PKGDIR="src/trezor-suite"
+
+          # Download AppImage
+          curl -sSLo "$PKGDIR/AppImage" "https://github.com/trezor/trezor-suite/releases/download/v${latest}/Trezor-Suite-${latest}-linux-x86_64.AppImage"
+          sha_appimage=$(sha512sum -b "$PKGDIR/AppImage" | awk '{ print $1 }')
+
+          # Download PNG icon and LICENSE from master
+          curl -sSLo "$PKGDIR/appIcon.png" "https://raw.githubusercontent.com/trezor/trezor-suite/master/suite-native/app/assets/production/appIcon.png"
+          curl -sSLo "$PKGDIR/LICENSE.downloaded.md" "https://raw.githubusercontent.com/trezor/trezor-suite/master/LICENSE.md"
+          sha_png=$(sha512sum -b "$PKGDIR/appIcon.png" | awk '{ print $1 }')
+          sha_license=$(sha512sum -b "$PKGDIR/LICENSE.downloaded.md" | awk '{ print $1 }')
+
+          # Checksums for local files (execute script and desktop entry)
+          sha_script=$(sha512sum -b "$PKGDIR/trezor-suite" | awk '{ print $1 }')
+          sha_desktop=$(sha512sum -b "$PKGDIR/trezor-suite.desktop" | awk '{ print $1 }')
+
+          echo "sha_appimage=$sha_appimage" >> "$GITHUB_OUTPUT"
+          echo "sha_script=$sha_script" >> "$GITHUB_OUTPUT"
+          echo "sha_desktop=$sha_desktop" >> "$GITHUB_OUTPUT"
+          echo "sha_png=$sha_png" >> "$GITHUB_OUTPUT"
+          echo "sha_license=$sha_license" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          rm -f src/trezor-suite/AppImage src/trezor-suite/appIcon.png src/trezor-suite/LICENSE.downloaded.md
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/trezor-suite/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+
+          # Replace sha512sums block: multi-line array with 5 single-quoted hashes
+          sha_appimage="${{ steps.checksums.outputs.sha_appimage }}"
+          sha_script="${{ steps.checksums.outputs.sha_script }}"
+          sha_desktop="${{ steps.checksums.outputs.sha_desktop }}"
+          sha_png="${{ steps.checksums.outputs.sha_png }}"
+          sha_license="${{ steps.checksums.outputs.sha_license }}"
+
+          # Build new sha512sums block (same format as original: one per line, indented)
+          cat > /tmp/sha512block << EOF
+          sha512sums=('${sha_appimage}'
+                      '${sha_script}'
+                      '${sha_desktop}'
+                      '${sha_png}'
+                      '${sha_license}')
+          EOF
+
+          # Replace the sha512sums=(...) block in PKGBUILD
+          awk '
+            /^sha512sums=/ { inblock=1; system("cat /tmp/sha512block"); next }
+            inblock && /\)/ { inblock=0; next }
+            inblock { next }
+            { print }
+          ' "$PKGBUILD" > "$PKGBUILD.new"
+          mv "$PKGBUILD.new" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A 6 '^sha512sums=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/trezor-suite-${{ steps.versions.outputs.latest }}
+          title: "chore(trezor-suite): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **trezor-suite**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` set to 1; `sha512sums` updated (AppImage, icon, LICENSE from master).
+          add-paths: src/trezor-suite/PKGBUILD
+          commit-message: "chore(trezor-suite): bump to ${{ steps.versions.outputs.latest }}"
