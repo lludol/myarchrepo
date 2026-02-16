@@ -4,6 +4,7 @@
 rm -f src/*/*.log
 rm -f src/*/*.AppImage*
 rm -f src/*/*.deb
+rm -f src/*/*.rpm
 rm -f src/*/*.tmp
 rm -f src/*/*.html
 rm -f src/*/*.snap
