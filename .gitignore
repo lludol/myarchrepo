@@ -11,3 +11,7 @@
 
 # repo-add backup files (regenerated, don't version)
 *.tar.zst.old
+
+# act / workflow secrets (never commit tokens)
+.secrets
+.gh-token
