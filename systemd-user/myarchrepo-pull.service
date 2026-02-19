@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/lludol/perso/myarchrepo
+WorkingDirectory=/home/lludol/myarchrepo
 ExecStart=/usr/bin/git pull
 ExecStart=/usr/bin/git lfs pull
 

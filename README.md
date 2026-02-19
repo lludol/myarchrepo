@@ -37,7 +37,7 @@ systemctl --user enable --now myarchrepo-pull.timer
 
 Check timer status: `systemctl --user list-timers myarchrepo-pull.timer`
 
-If your repo is not at `~/perso/myarchrepo`, edit `WorkingDirectory=` in `myarchrepo-pull.service` before copying.
+If your repo is not at `~/myarchrepo`, edit `WorkingDirectory=` in `myarchrepo-pull.service` before copying.
 
 ## Using the Repo
 
@@ -66,6 +66,15 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 | amdgpu_top-tui-bin | ✅ |
 | beekeeper-studio-bin | ✅ |
 | cursor-bin | ❌ |
+| elephant | ❌ |
+| elephant-bluetooth | ❌ |
+| elephant-calc | ❌ |
+| elephant-desktopapplications | ❌ |
+| elephant-files | ❌ |
+| elephant-menus | ❌ |
+| elephant-symbols | ❌ |
+| elephant-unicode | ❌ |
+| elephant-websearch | ❌ |
 | fastmail | ❌ |
 | mongodb-compass-bin | ❌ |
 | overskride | ✅ |
