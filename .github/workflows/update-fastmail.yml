@@ -1,0 +1,113 @@
+# Check for new Fastmail desktop release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update fastmail
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        run: |
+          PKGBUILD="src/fastmail/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+
+          page=$(curl -fsSL "https://www.fastmail.com/downloadapp/")
+          latest=$(echo "$page" | grep -oE 'Fastmail-[0-9][0-9A-Za-z\.\-]*\.AppImage' | head -n1 | sed -E 's/^Fastmail-([0-9][0-9A-Za-z\.\-]*)\.AppImage$/\1/')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest Fastmail version from download page"
+            exit 1
+          fi
+
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download AppImage and compute checksums
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          PKGDIR="src/fastmail"
+          appimg="Fastmail-${latest}.AppImage"
+          url="https://dl.fastmailcdn.com/desktop/production/linux/x64/${appimg}"
+
+          curl -sSLo "${PKGDIR}/${appimg}" "$url"
+          sha_appimg=$(sha512sum -b "${PKGDIR}/${appimg}" | awk '{ print $1 }')
+          sha_license=$(sha512sum -b "${PKGDIR}/LICENSE.md" | awk '{ print $1 }')
+
+          echo "sha_appimg=$sha_appimg" >> "$GITHUB_OUTPUT"
+          echo "sha_license=$sha_license" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/fastmail/Fastmail-${{ steps.versions.outputs.latest }}.AppImage"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/fastmail/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          sha_appimg="${{ steps.checksums.outputs.sha_appimg }}"
+          sha_license="${{ steps.checksums.outputs.sha_license }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+
+          cat > /tmp/sha512block << EOF
+          sha512sums=('${sha_appimg}'
+                      '${sha_license}')
+          EOF
+
+          awk '
+            /^sha512sums=/ { inblock=1; system("cat /tmp/sha512block"); next }
+            inblock && /\)/ { inblock=0; next }
+            inblock { next }
+            { print }
+          ' "$PKGBUILD" > "$PKGBUILD.new"
+          mv "$PKGBUILD.new" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A 2 '^sha512sums=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/fastmail-${{ steps.versions.outputs.latest }}
+          title: "chore(fastmail): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **fastmail**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `sha512sums` updated (AppImage + LICENSE.md).
+          add_paths: src/fastmail/PKGBUILD
+          commit_message: "chore(fastmail): bump to ${{ steps.versions.outputs.latest }}"

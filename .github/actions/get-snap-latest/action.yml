@@ -1,0 +1,54 @@
+name: Get latest Snap version
+description: Reads pkgver from PKGBUILD and compares it with the latest version from Snap API.
+
+inputs:
+  snap_name:
+    description: Snap package name (for example, tradingview).
+    required: true
+  pkgbuild_path:
+    description: Path to PKGBUILD file.
+    required: true
+
+outputs:
+  current:
+    description: Current version from PKGBUILD pkgver.
+    value: ${{ steps.versions.outputs.current }}
+  latest:
+    description: Latest version from Snap API channel-map[0].version.
+    value: ${{ steps.versions.outputs.latest }}
+  download_url:
+    description: Download URL from Snap API channel-map[0].download.url.
+    value: ${{ steps.versions.outputs.download_url }}
+  update_available:
+    description: true when latest is newer than current.
+    value: ${{ steps.versions.outputs.update_available }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve current and latest versions
+      id: versions
+      shell: bash
+      env:
+        SNAP_NAME: ${{ inputs.snap_name }}
+        PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
+      run: |
+        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
+        resp=$(curl -sSL -H "Snap-Device-Series: 16" -H "User-Agent: Mozilla/5.0" \
+          "https://api.snapcraft.io/v2/snaps/info/${SNAP_NAME}")
+        latest=$(echo "$resp" | jq -r '.channel-map[0].version')
+        download_url=$(echo "$resp" | jq -r '.channel-map[0].download.url')
+        if [[ -z "$latest" || "$latest" == "null" || -z "$download_url" || "$download_url" == "null" ]]; then
+          echo "Could not parse latest version or download URL from Snap API"
+          exit 1
+        fi
+
+        older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+        update_available=false
+        [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+        echo "current=$current" >> "$GITHUB_OUTPUT"
+        echo "latest=$latest" >> "$GITHUB_OUTPUT"
+        echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
+        echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+        echo "Current: $current | Latest: $latest | Update: $update_available"

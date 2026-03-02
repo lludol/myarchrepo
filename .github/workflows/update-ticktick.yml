@@ -1,0 +1,125 @@
+# Check for new TickTick Linux release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update ticktick
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '27 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        run: |
+          PKGBUILD="src/ticktick/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+
+          download_url_x86_64=$(
+            curl -sSI "https://ticktick.com/static/getApp/download?type=linux_deb_x64" \
+              | sed -n 's/^[Ll]ocation: \(.*\)$/\1/p' \
+              | tr -d '\r' \
+              | tail -n1
+          )
+          download_url_aarch64=$(
+            curl -sSI "https://ticktick.com/static/getApp/download?type=linux_deb_arm64" \
+              | sed -n 's/^[Ll]ocation: \(.*\)$/\1/p' \
+              | tr -d '\r' \
+              | tail -n1
+          )
+
+          if [[ -z "$download_url_x86_64" || -z "$download_url_aarch64" ]]; then
+            echo "Could not resolve TickTick download URLs from redirect endpoint"
+            exit 1
+          fi
+
+          latest=$(echo "$download_url_x86_64" | sed -n 's|.*/ticktick-\([^/]*\)-amd64\.deb$|\1|p')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest TickTick version from URL: $download_url_x86_64"
+            exit 1
+          fi
+
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "download_url_x86_64=$download_url_x86_64" >> "$GITHUB_OUTPUT"
+          echo "download_url_aarch64=$download_url_aarch64" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download packages and compute checksums
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          download_url_x86_64="${{ steps.versions.outputs.download_url_x86_64 }}"
+          download_url_aarch64="${{ steps.versions.outputs.download_url_aarch64 }}"
+          PKGDIR="src/ticktick"
+
+          curl -sSLo "${PKGDIR}/ticktick-${latest}-amd64.deb" "$download_url_x86_64"
+          curl -sSLo "${PKGDIR}/ticktick-${latest}-arm64.deb" "$download_url_aarch64"
+
+          sha_x64=$(sha256sum -b "${PKGDIR}/ticktick-${latest}-amd64.deb" | awk '{ print $1 }')
+          sha_a64=$(sha256sum -b "${PKGDIR}/ticktick-${latest}-arm64.deb" | awk '{ print $1 }')
+
+          echo "sha256_x86_64=$sha_x64" >> "$GITHUB_OUTPUT"
+          echo "sha256_aarch64=$sha_a64" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          rm -f "src/ticktick/ticktick-${latest}-amd64.deb" "src/ticktick/ticktick-${latest}-arm64.deb"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/ticktick/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          sha_x64="${{ steps.checksums.outputs.sha256_x86_64 }}"
+          sha_a64="${{ steps.checksums.outputs.sha256_aarch64 }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha256sums_x86_64=(.*/sha256sums_x86_64=('${sha_x64}')/" "$PKGBUILD"
+          sed -i "s/^sha256sums_aarch64=(.*/sha256sums_aarch64=('${sha_a64}')/" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -E '^sha256sums_(x86_64|aarch64)=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/ticktick-${{ steps.versions.outputs.latest }}
+          title: "chore(ticktick): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **ticktick**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; arch-specific `sha256sums` updated.
+          add_paths: src/ticktick/PKGBUILD
+          commit_message: "chore(ticktick): bump to ${{ steps.versions.outputs.latest }}"

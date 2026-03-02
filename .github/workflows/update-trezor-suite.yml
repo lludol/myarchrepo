@@ -6,12 +6,15 @@ name: Update trezor-suite
 on:
   workflow_dispatch:
   schedule:
-    # Weekly on Monday at 06:00 UTC
-    - cron: '0 6 * * 1'
+    - cron: '33 4 * * 1'
 
 permissions:
   contents: write
   pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
   check-and-update:
@@ -26,27 +29,11 @@ jobs:
 
       - name: Get current and latest version
         id: versions
-        env:
-          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
-        run: |
-          REPO="trezor/trezor-suite"
-          PKGBUILD="src/trezor-suite/PKGBUILD"
-          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
-          CURL_OPTS=()
-          [[ -n "${GH_API_TOKEN:-}" ]] && CURL_OPTS=(-H "Authorization: Bearer $GH_API_TOKEN")
-          resp=$(curl -sS "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases/latest")
-          latest=$(echo "$resp" | grep -o '"tag_name": *"[^"]*"' | head -n1 | sed 's/"tag_name": *"v\?\([^"]*\)"/\1/')
-          if [[ -z "$latest" ]]; then
-            echo "Could not parse latest release"
-            exit 1
-          fi
-          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
-          update_available=false
-          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
-          echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
-          echo "Current: $current | Latest: $latest | Update: $update_available"
+        uses: ./.github/actions/get-github-latest
+        with:
+          repo: trezor/trezor-suite
+          pkgbuild_path: src/trezor-suite/PKGBUILD
+          gh_api_token: ${{ secrets.GH_API_TOKEN || github.token }}
 
       - name: Download assets and compute sha512 checksums
         if: steps.versions.outputs.update_available == 'true'
@@ -120,7 +107,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: ./.github/actions/create-update-pr
         with:
           token: ${{ secrets.GH_API_TOKEN }}
           branch: update/trezor-suite-${{ steps.versions.outputs.latest }}
@@ -130,5 +117,5 @@ jobs:
             - **Previous:** ${{ steps.versions.outputs.current }}
             - **New:** ${{ steps.versions.outputs.latest }}
             - `pkgrel` set to 1; `sha512sums` updated (AppImage, icon, LICENSE from master).
-          add-paths: src/trezor-suite/PKGBUILD
-          commit-message: "chore(trezor-suite): bump to ${{ steps.versions.outputs.latest }}"
+          add_paths: src/trezor-suite/PKGBUILD
+          commit_message: "chore(trezor-suite): bump to ${{ steps.versions.outputs.latest }}"

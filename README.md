@@ -59,34 +59,39 @@ sudo pacman -Syu     # Upgrade all, including from repo
 
 List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 
-## TODO: Auto-update actions
+## TODO
+
+- [ ] Add a test-build step (Arch `base-devel` container) to verify PKGBUILDs before merging PRs
+- [ ] Enable auto-merge on update PRs once test-build is in place
+
+## Auto-update actions
 
 | Package | Has action |
 |---------|------------|
 | amdgpu_top-tui-bin | ✅ |
 | beekeeper-studio-bin | ✅ |
-| catppuccin-cursors-latte | ❌ |
-| catppuccin-cursors-macchiato | ❌ |
-| catppuccin-gtk-theme-latte | ❌ |
-| catppuccin-gtk-theme-macchiato | ❌ |
+| catppuccin-cursors-latte | ✅ |
+| catppuccin-cursors-macchiato | ✅ |
+| catppuccin-gtk-theme-latte | ✅ |
+| catppuccin-gtk-theme-macchiato | ✅ |
 | cursor-bin | ✅ |
-| elephant | ❌ |
-| elephant-bluetooth | ❌ |
-| elephant-calc | ❌ |
-| elephant-clipboard | ❌ |
-| elephant-desktopapplications | ❌ |
-| elephant-files | ❌ |
-| elephant-menus | ❌ |
-| elephant-symbols | ❌ |
-| elephant-unicode | ❌ |
-| elephant-websearch | ❌ |
-| fastmail | ❌ |
-| mongodb-compass-bin | ❌ |
+| elephant | ✅ |
+| elephant-bluetooth | ✅ |
+| elephant-calc | ✅ |
+| elephant-clipboard | ✅ |
+| elephant-desktopapplications | ✅ |
+| elephant-files | ✅ |
+| elephant-menus | ✅ |
+| elephant-symbols | ✅ |
+| elephant-unicode | ✅ |
+| elephant-websearch | ✅ |
+| fastmail | ✅ |
+| mongodb-compass-bin | ✅ |
 | overskride | ✅ |
-| slack-desktop-wayland | ❌ |
-| ticktick | ❌ |
-| tradingview | ❌ |
+| slack-desktop-wayland | ✅ |
+| ticktick | ✅ |
+| tradingview | ✅ |
 | trezor-suite | ✅ |
 | visual-studio-code-bin | ✅ |
 | walker | ✅ |
-| zoom | ❌ |
+| zoom | ✅ |

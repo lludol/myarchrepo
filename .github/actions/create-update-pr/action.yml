@@ -1,0 +1,35 @@
+name: Create update pull request
+description: Wrapper around peter-evans/create-pull-request for package update workflows.
+
+inputs:
+  token:
+    description: GitHub token used to create commits and pull requests.
+    required: true
+  branch:
+    description: Branch name to create/update.
+    required: true
+  title:
+    description: Pull request title.
+    required: true
+  body:
+    description: Pull request body.
+    required: true
+  add_paths:
+    description: Paths to stage for commit.
+    required: true
+  commit_message:
+    description: Commit message for the update commit.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Open or update pull request
+      uses: peter-evans/create-pull-request@v7
+      with:
+        token: ${{ inputs.token }}
+        branch: ${{ inputs.branch }}
+        title: ${{ inputs.title }}
+        body: ${{ inputs.body }}
+        add-paths: ${{ inputs.add_paths }}
+        commit-message: ${{ inputs.commit_message }}
