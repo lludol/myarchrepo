@@ -29,25 +29,10 @@ jobs:
 
       - name: Get current and latest version
         id: versions
-        run: |
-          PKGBUILD="src/fastmail/PKGBUILD"
-          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
-
-          page=$(curl -fsSL "https://www.fastmail.com/downloadapp/")
-          latest=$(echo "$page" | grep -oE 'Fastmail-[0-9][0-9A-Za-z\.\-]*\.AppImage' | head -n1 | sed -E 's/^Fastmail-([0-9][0-9A-Za-z\.\-]*)\.AppImage$/\1/')
-          if [[ -z "$latest" ]]; then
-            echo "Could not parse latest Fastmail version from download page"
-            exit 1
-          fi
-
-          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
-          update_available=false
-          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
-
-          echo "current=$current" >> "$GITHUB_OUTPUT"
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
-          echo "Current: $current | Latest: $latest | Update: $update_available"
+        uses: ./.github/actions/get-flathub-latest
+        with:
+          app_id: com.fastmail.Fastmail
+          pkgbuild_path: src/fastmail/PKGBUILD
 
       - name: Download AppImage and compute checksums
         if: steps.versions.outputs.update_available == 'true'

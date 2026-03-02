@@ -1,9 +1,9 @@
-name: Get latest Snap version
-description: Reads pkgver from PKGBUILD and compares it with the latest version from Snap API.
+name: Get latest Flathub version
+description: Reads pkgver from PKGBUILD and compares it with the latest version from Flathub appstream API.
 
 inputs:
-  snap_name:
-    description: Snap package name (for example, tradingview).
+  app_id:
+    description: Flathub application ID (for example, com.fastmail.Fastmail).
     required: true
   pkgbuild_path:
     description: Path to PKGBUILD file.
@@ -14,11 +14,8 @@ outputs:
     description: Current version from PKGBUILD pkgver.
     value: ${{ steps.versions.outputs.current }}
   latest:
-    description: Latest version from Snap API channel-map[0].version.
+    description: Latest version from Flathub appstream releases[0].version.
     value: ${{ steps.versions.outputs.latest }}
-  download_url:
-    description: Download URL from Snap API channel-map[0].download.url.
-    value: ${{ steps.versions.outputs.download_url }}
   update_available:
     description: true when latest is newer than current.
     value: ${{ steps.versions.outputs.update_available }}
@@ -30,16 +27,14 @@ runs:
       id: versions
       shell: bash
       env:
-        SNAP_NAME: ${{ inputs.snap_name }}
+        APP_ID: ${{ inputs.app_id }}
         PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
       run: |
         current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
-        resp=$(curl -fsSL -H "Snap-Device-Series: 16" -H "User-Agent: Mozilla/5.0" \
-          "https://api.snapcraft.io/v2/snaps/info/${SNAP_NAME}")
-        latest=$(echo "$resp" | jq -r '.["channel-map"][0].version')
-        download_url=$(echo "$resp" | jq -r '.["channel-map"][0].download.url')
-        if [[ -z "$latest" || "$latest" == "null" || -z "$download_url" || "$download_url" == "null" ]]; then
-          echo "Could not parse latest version or download URL from Snap API for $SNAP_NAME"
+        resp=$(curl -fsSL "https://flathub.org/api/v2/appstream/${APP_ID}")
+        latest=$(echo "$resp" | jq -r '.releases[0].version')
+        if [[ -z "$latest" || "$latest" == "null" ]]; then
+          echo "Could not get latest version from Flathub API for $APP_ID"
           exit 1
         fi
 
@@ -49,6 +44,5 @@ runs:
 
         echo "current=$current" >> "$GITHUB_OUTPUT"
         echo "latest=$latest" >> "$GITHUB_OUTPUT"
-        echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
         echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
         echo "Current: $current | Latest: $latest | Update: $update_available"
