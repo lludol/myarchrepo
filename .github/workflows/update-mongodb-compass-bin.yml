@@ -1,0 +1,117 @@
+# Check for new MongoDB Compass release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update mongodb-compass-bin
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '18 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
+        run: |
+          PKGBUILD="src/mongodb-compass-bin/PKGBUILD"
+          current=$(grep "^_pkgver=" "$PKGBUILD" | cut -d= -f2 | tr -d "'")
+
+          CURL_OPTS=()
+          [[ -n "${GH_API_TOKEN:-}" ]] && CURL_OPTS=(-H "Authorization: Bearer $GH_API_TOKEN")
+          resp=$(curl -sS "${CURL_OPTS[@]}" "https://api.github.com/repos/mongodb-js/compass/releases/latest")
+          latest=$(echo "$resp" | grep -o '"tag_name": *"[^"]*"' | head -n1 | sed 's/"tag_name": *"v\?\([^"]*\)"/\1/')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest release for mongodb-js/compass"
+            exit 1
+          fi
+
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download RPM and compute b2 checksums
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          PKGDIR="src/mongodb-compass-bin"
+          rpm_name="mongodb-compass-${latest}.x86_64.rpm"
+          rpm_url="https://downloads.mongodb.com/compass/${rpm_name}"
+
+          curl -sSLo "${PKGDIR}/${rpm_name}" "$rpm_url"
+          b2_rpm=$(b2sum "${PKGDIR}/${rpm_name}" | awk '{ print $1 }')
+          b2_conf=$(b2sum "${PKGDIR}/mongodb-compass.conf" | awk '{ print $1 }')
+
+          echo "b2_rpm=$b2_rpm" >> "$GITHUB_OUTPUT"
+          echo "b2_conf=$b2_conf" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/mongodb-compass-bin/mongodb-compass-${{ steps.versions.outputs.latest }}.x86_64.rpm"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/mongodb-compass-bin/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          b2_rpm="${{ steps.checksums.outputs.b2_rpm }}"
+          b2_conf="${{ steps.checksums.outputs.b2_conf }}"
+
+          sed -i "s/^_pkgver=.*/_pkgver='${latest}'/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel='1'/" "$PKGBUILD"
+
+          cat > /tmp/b2block << EOF
+          b2sums=('${b2_rpm}'
+                  '${b2_conf}')
+          EOF
+
+          awk '
+            /^b2sums=/ { inblock=1; system("cat /tmp/b2block"); next }
+            inblock && /\)/ { inblock=0; next }
+            inblock { next }
+            { print }
+          ' "$PKGBUILD" > "$PKGBUILD.new"
+          mv "$PKGBUILD.new" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(_pkgver|pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A 2 '^b2sums=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/mongodb-compass-bin-${{ steps.versions.outputs.latest }}
+          title: "chore(mongodb-compass-bin): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **mongodb-compass-bin**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `_pkgver` and `pkgrel` reset to 1; `b2sums` updated (RPM + config).
+          add_paths: src/mongodb-compass-bin/PKGBUILD
+          commit_message: "chore(mongodb-compass-bin): bump to ${{ steps.versions.outputs.latest }}"

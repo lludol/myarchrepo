@@ -1,0 +1,117 @@
+# Check for new Zoom release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update zoom
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '42 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        run: |
+          PKGBUILD="src/zoom/PKGBUILD"
+          current_pkgver=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          current_subver=$(grep '^_subver=' "$PKGBUILD" | cut -d= -f2)
+          current_full="${current_pkgver}.${current_subver}"
+
+          download_url=$(
+            curl -sSI "https://zoom.us/client/latest/zoom_x86_64.pkg.tar.xz" \
+              | sed -n 's/^[Ll]ocation: \(.*\)$/\1/p' \
+              | tr -d '\r' \
+              | tail -n1
+          )
+          if [[ -z "$download_url" ]]; then
+            echo "Could not resolve Zoom download URL from redirect endpoint"
+            exit 1
+          fi
+
+          parsed=$(echo "$download_url" | sed -n 's|.*/client/\([0-9][0-9.]*\)\.\([0-9][0-9]*\)/zoom_x86_64\.pkg\.tar\.xz$|\1 \2|p')
+          latest_pkgver=$(echo "$parsed" | awk '{ print $1 }')
+          latest_subver=$(echo "$parsed" | awk '{ print $2 }')
+          if [[ -z "$latest_pkgver" || -z "$latest_subver" ]]; then
+            echo "Could not parse latest Zoom version/subversion from URL: $download_url"
+            exit 1
+          fi
+          latest_full="${latest_pkgver}.${latest_subver}"
+
+          older=$(printf '%s\n%s' "$current_full" "$latest_full" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current_full" && "$current_full" != "$latest_full" ]] && update_available=true
+
+          echo "current=${current_full}" >> "$GITHUB_OUTPUT"
+          echo "latest=${latest_full}" >> "$GITHUB_OUTPUT"
+          echo "latest_pkgver=$latest_pkgver" >> "$GITHUB_OUTPUT"
+          echo "latest_subver=$latest_subver" >> "$GITHUB_OUTPUT"
+          echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current_full | Latest: $latest_full | Update: $update_available"
+
+      - name: Download package and compute sha512
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksum
+        run: |
+          latest_full="${{ steps.versions.outputs.latest }}"
+          download_url="${{ steps.versions.outputs.download_url }}"
+          PKGDIR="src/zoom"
+          archive_name="zoom-${latest_full}-x86_64.pkg.tar.xz"
+
+          curl -sSLo "${PKGDIR}/${archive_name}" "$download_url"
+          sha=$(sha512sum -b "${PKGDIR}/${archive_name}" | awk '{ print $1 }')
+
+          echo "sha512=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/zoom/zoom-${{ steps.versions.outputs.latest }}-x86_64.pkg.tar.xz"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/zoom/PKGBUILD"
+          latest_pkgver="${{ steps.versions.outputs.latest_pkgver }}"
+          latest_subver="${{ steps.versions.outputs.latest_subver }}"
+          sha="${{ steps.checksum.outputs.sha512 }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest_pkgver}/" "$PKGBUILD"
+          sed -i "s/^_subver=.*/_subver=${latest_subver}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha512sums=(.*/sha512sums=('${sha}')/" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|_subver|pkgrel|sha512sums)=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/zoom-${{ steps.versions.outputs.latest }}
+          title: "chore(zoom): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **zoom**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgver`, `_subver`, `pkgrel` and `sha512sums` updated.
+          add_paths: src/zoom/PKGBUILD
+          commit_message: "chore(zoom): bump to ${{ steps.versions.outputs.latest }}"

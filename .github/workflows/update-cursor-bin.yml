@@ -7,12 +7,15 @@ name: Update cursor-bin
 on:
   workflow_dispatch:
   schedule:
-    # Weekly on Monday at 06:00 UTC
-    - cron: '0 6 * * 1'
+    - cron: '9 4 * * 1'
 
 permissions:
   contents: write
   pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
   check-and-update:
@@ -86,7 +89,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: ./.github/actions/create-update-pr
         with:
           token: ${{ secrets.GH_API_TOKEN }}
           branch: update/cursor-bin-${{ steps.versions.outputs.latest }}
@@ -96,5 +99,5 @@ jobs:
             - **Previous:** ${{ steps.versions.outputs.current }}
             - **New:** ${{ steps.versions.outputs.latest }}
             - `pkgrel` reset to 1; `_commit` and `sha512sums[0]` updated.
-          add-paths: src/cursor-bin/PKGBUILD
-          commit-message: "chore(cursor-bin): bump to ${{ steps.versions.outputs.latest }}"
+          add_paths: src/cursor-bin/PKGBUILD
+          commit_message: "chore(cursor-bin): bump to ${{ steps.versions.outputs.latest }}"

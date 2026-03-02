@@ -1,0 +1,65 @@
+name: Update PKGBUILD from GitHub tarball
+description: Download a GitHub release tarball, validate expected path, compute sha256, and update PKGBUILD.
+
+inputs:
+  repo:
+    description: GitHub owner/repo (for example, abenz1267/elephant).
+    required: true
+  version:
+    description: Release version without v prefix.
+    required: true
+  pkgbuild_path:
+    description: Path to PKGBUILD file.
+    required: true
+  required_path:
+    description: Optional path that must exist inside extracted tarball root.
+    required: false
+    default: ""
+
+outputs:
+  sha256:
+    description: Computed sha256 for the release tarball.
+    value: ${{ steps.update.outputs.sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download tarball, validate, and update PKGBUILD
+      id: update
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        VERSION: ${{ inputs.version }}
+        PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
+        REQUIRED_PATH: ${{ inputs.required_path }}
+      run: |
+        set -euo pipefail
+
+        url="https://github.com/${REPO}/archive/refs/tags/v${VERSION}.tar.gz"
+        archive_path="package-${VERSION}.tar.gz"
+        curl -sSLo "$archive_path" "$url"
+
+        root_dir=$(tar -tzf "$archive_path" | sed -n '1s#/.*##p')
+        if [[ -z "${root_dir:-}" ]]; then
+          echo "Could not determine tarball root directory for ${REPO} v${VERSION}"
+          exit 1
+        fi
+
+        if [[ -n "${REQUIRED_PATH:-}" ]]; then
+          if ! tar -tzf "$archive_path" | rg -q "^${root_dir}/${REQUIRED_PATH}(/|$)"; then
+            echo "Required path not found in release tarball: ${REQUIRED_PATH}"
+            exit 1
+          fi
+        fi
+
+        sha=$(sha256sum -b "$archive_path" | awk '{ print $1 }')
+
+        sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD_PATH"
+        sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD_PATH"
+        sed -i "s/^sha256sums=.*/sha256sums=('${sha}')/" "$PKGBUILD_PATH"
+
+        echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+        echo "Updated PKGBUILD: $PKGBUILD_PATH"
+        grep -E '^(pkgver|pkgrel|sha256sums)=' "$PKGBUILD_PATH"
+
+        rm -f "$archive_path"

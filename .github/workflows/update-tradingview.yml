@@ -1,0 +1,86 @@
+# Check for new TradingView release (Snap Store) and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+# Version and download URL from Snap Store API (api.snapcraft.io).
+
+name: Update tradingview
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        uses: ./.github/actions/get-snap-latest
+        with:
+          snap_name: tradingview
+          pkgbuild_path: src/tradingview/PKGBUILD
+
+      - name: Download .snap and compute sha256
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          download_url="${{ steps.versions.outputs.download_url }}"
+          PKGDIR="src/tradingview"
+          curl -sSLo "${PKGDIR}/tradingview-${latest}.snap" "$download_url"
+          sha_snap=$(sha256sum -b "${PKGDIR}/tradingview-${latest}.snap" | awk '{ print $1 }')
+          echo "sha_snap=$sha_snap" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/tradingview/tradingview-${{ steps.versions.outputs.latest }}.snap"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/tradingview/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          download_url="${{ steps.versions.outputs.download_url }}"
+          sha_snap="${{ steps.checksums.outputs.sha_snap }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          # Replace first sha256 (64-char hex) line only; keep 'SKIP' for the second source
+          sed -i "/^  '[0-9a-f]\{64\}'\$/s/.*/  '${sha_snap}'/" "$PKGBUILD"
+          # Update the snap download URL (line with .snap::)
+          sed -i "s|\"https://api.snapcraft.io/api/v1/snaps/download/[^\"]*\"|\"${download_url}\"|" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A 3 '^sha256sums=' "$PKGBUILD"
+          grep '\.snap::' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/tradingview-${{ steps.versions.outputs.latest }}
+          title: "chore(tradingview): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **tradingview** (Snap Store).
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `sha256sums[0]` and snap download URL updated.
+          add_paths: src/tradingview/PKGBUILD
+          commit_message: "chore(tradingview): bump to ${{ steps.versions.outputs.latest }}"

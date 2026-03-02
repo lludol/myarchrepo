@@ -1,0 +1,137 @@
+# Check for new Catppuccin releases and open PRs per package.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update catppuccin
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '6 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - name: catppuccin-cursors-latte
+            repo: catppuccin/cursors
+            pkgbuild: src/catppuccin-cursors-latte/PKGBUILD
+            flavor: latte
+            kind: cursors
+          - name: catppuccin-cursors-macchiato
+            repo: catppuccin/cursors
+            pkgbuild: src/catppuccin-cursors-macchiato/PKGBUILD
+            flavor: macchiato
+            kind: cursors
+          - name: catppuccin-gtk-theme-latte
+            repo: catppuccin/gtk
+            pkgbuild: src/catppuccin-gtk-theme-latte/PKGBUILD
+            flavor: latte
+            kind: gtk
+          - name: catppuccin-gtk-theme-macchiato
+            repo: catppuccin/gtk
+            pkgbuild: src/catppuccin-gtk-theme-macchiato/PKGBUILD
+            flavor: macchiato
+            kind: gtk
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        uses: ./.github/actions/get-github-latest
+        with:
+          repo: ${{ matrix.package.repo }}
+          pkgbuild_path: ${{ matrix.package.pkgbuild }}
+          gh_api_token: ${{ secrets.GH_API_TOKEN || github.token }}
+
+      - name: Update PKGBUILD from Catppuccin assets
+        if: steps.versions.outputs.update_available == 'true'
+        env:
+          REPO: ${{ matrix.package.repo }}
+          VERSION: ${{ steps.versions.outputs.latest }}
+          PKGBUILD_PATH: ${{ matrix.package.pkgbuild }}
+          FLAVOR: ${{ matrix.package.flavor }}
+          KIND: ${{ matrix.package.kind }}
+        run: |
+          set -euo pipefail
+
+          case "$KIND" in
+            cursors)
+              colors=(blue dark flamingo green lavender light maroon mauve peach pink red rosewater sapphire sky teal yellow)
+              suffix="-cursors.zip"
+              ;;
+            gtk)
+              colors=(blue flamingo green lavender maroon mauve peach pink red rosewater sapphire sky teal yellow)
+              suffix="-standard+default.zip"
+              ;;
+            *)
+              echo "Unsupported kind: $KIND"
+              exit 1
+              ;;
+          esac
+
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+
+          hashes=()
+          for color in "${colors[@]}"; do
+            asset_name="catppuccin-${FLAVOR}-${color}${suffix}"
+            url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset_name}"
+            out="${workdir}/${asset_name}"
+            curl -fsSLo "$out" "$url"
+            hashes+=("$(sha256sum -b "$out" | awk '{ print $1 }')")
+          done
+
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD_PATH"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD_PATH"
+
+          block_file="${workdir}/sha256block"
+          {
+            echo "sha256sums=('${hashes[0]}'"
+            for ((i=1; i<${#hashes[@]}; i++)); do
+              echo "            '${hashes[$i]}'"
+            done
+            echo ")"
+          } > "$block_file"
+
+          awk -v block="$block_file" '
+            BEGIN { inblock=0 }
+            /^sha256sums=\(/ { inblock=1; while ((getline line < block) > 0) print line; close(block); next }
+            inblock && /^\)/ { inblock=0; next }
+            inblock { next }
+            { print }
+          ' "$PKGBUILD_PATH" > "${PKGBUILD_PATH}.new"
+          mv "${PKGBUILD_PATH}.new" "$PKGBUILD_PATH"
+
+          echo "Updated PKGBUILD: $PKGBUILD_PATH"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD_PATH"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/${{ matrix.package.name }}-${{ steps.versions.outputs.latest }}
+          title: "chore(${{ matrix.package.name }}): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **${{ matrix.package.name }}**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `sha256sums` updated from release assets.
+          add_paths: ${{ matrix.package.pkgbuild }}
+          commit_message: "chore(${{ matrix.package.name }}): bump to ${{ steps.versions.outputs.latest }}"

@@ -1,0 +1,126 @@
+# Check for new Slack Desktop beta release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update slack-desktop-wayland
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '24 4 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        run: |
+          PKGBUILD="src/slack-desktop-wayland/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+
+          download_url=$(
+            curl -sSI "https://slack.com/ssb/download-linux64-beta" \
+              | sed -n 's/^[Ll]ocation: \(.*\)$/\1/p' \
+              | tr -d '\r' \
+              | tail -n1
+          )
+          if [[ -z "$download_url" ]]; then
+            echo "Could not resolve Slack beta download URL from redirect endpoint"
+            exit 1
+          fi
+
+          latest=$(echo "$download_url" | sed -n 's|.*/desktop-releases/linux/x64/\([^/]*\)/slack-desktop-[^/]*-amd64\.deb$|\1|p')
+          if [[ -z "$latest" ]]; then
+            latest=$(echo "$download_url" | sed -n 's|.*/slack-desktop-\([^/]*\)-amd64\.deb$|\1|p')
+          fi
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest Slack version from URL: $download_url"
+            exit 1
+          fi
+
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "download_url=$download_url" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download package and compute b2 checksums
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          download_url="${{ steps.versions.outputs.download_url }}"
+          PKGDIR="src/slack-desktop-wayland"
+
+          curl -sSLo "${PKGDIR}/slack-desktop-${latest}-amd64.deb" "$download_url"
+          b2_deb=$(b2sum "${PKGDIR}/slack-desktop-${latest}-amd64.deb" | awk '{ print $1 }')
+          b2_patch=$(b2sum "${PKGDIR}/slack-desktop.patch" | awk '{ print $1 }')
+
+          echo "b2_deb=$b2_deb" >> "$GITHUB_OUTPUT"
+          echo "b2_patch=$b2_patch" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/slack-desktop-wayland/slack-desktop-${{ steps.versions.outputs.latest }}-amd64.deb"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/slack-desktop-wayland/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          b2_deb="${{ steps.checksums.outputs.b2_deb }}"
+          b2_patch="${{ steps.checksums.outputs.b2_patch }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+
+          cat > /tmp/b2block << EOF
+          b2sums=('${b2_deb}'
+                  '${b2_patch}')
+          EOF
+
+          awk '
+            /^b2sums=/ { inblock=1; system("cat /tmp/b2block"); next }
+            inblock && /\)/ { inblock=0; next }
+            inblock { next }
+            { print }
+          ' "$PKGBUILD" > "$PKGBUILD.new"
+          mv "$PKGBUILD.new" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A 2 '^b2sums=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/create-update-pr
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/slack-desktop-wayland-${{ steps.versions.outputs.latest }}
+          title: "chore(slack-desktop-wayland): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **slack-desktop-wayland**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `b2sums` updated (deb + patch).
+          add_paths: src/slack-desktop-wayland/PKGBUILD
+          commit_message: "chore(slack-desktop-wayland): bump to ${{ steps.versions.outputs.latest }}"
