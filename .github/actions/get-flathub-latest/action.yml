@@ -1,0 +1,48 @@
+name: Get latest Flathub version
+description: Reads pkgver from PKGBUILD and compares it with the latest version from Flathub appstream API.
+
+inputs:
+  app_id:
+    description: Flathub application ID (for example, com.fastmail.Fastmail).
+    required: true
+  pkgbuild_path:
+    description: Path to PKGBUILD file.
+    required: true
+
+outputs:
+  current:
+    description: Current version from PKGBUILD pkgver.
+    value: ${{ steps.versions.outputs.current }}
+  latest:
+    description: Latest version from Flathub appstream releases[0].version.
+    value: ${{ steps.versions.outputs.latest }}
+  update_available:
+    description: true when latest is newer than current.
+    value: ${{ steps.versions.outputs.update_available }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve current and latest versions
+      id: versions
+      shell: bash
+      env:
+        APP_ID: ${{ inputs.app_id }}
+        PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
+      run: |
+        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
+        resp=$(curl -fsSL "https://flathub.org/api/v2/appstream/${APP_ID}")
+        latest=$(echo "$resp" | jq -r '.releases[0].version')
+        if [[ -z "$latest" || "$latest" == "null" ]]; then
+          echo "Could not get latest version from Flathub API for $APP_ID"
+          exit 1
+        fi
+
+        older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+        update_available=false
+        [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+        echo "current=$current" >> "$GITHUB_OUTPUT"
+        echo "latest=$latest" >> "$GITHUB_OUTPUT"
+        echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+        echo "Current: $current | Latest: $latest | Update: $update_available"
