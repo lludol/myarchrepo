@@ -15,3 +15,4 @@
 # act / workflow secrets (never commit tokens)
 .secrets
 .gh-token
+.secrets.act
