@@ -1,0 +1,100 @@
+# Check for new Cursor release and open a PR to update PKGBUILD.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+# Version and download URL from community API (Cursor does not publish GitHub releases).
+
+name: Update cursor-bin
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        run: |
+          PKGBUILD="src/cursor-bin/PKGBUILD"
+          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          resp=$(curl -sSL "https://cursor-versions.selfhoster.nl/api/v1/versions?version=latest")
+          latest=$(echo "$resp" | jq -r '.version')
+          url_linux=$(echo "$resp" | jq -r '.platforms["linux-x64"].url')
+          if [[ -z "$latest" || "$latest" == "null" || -z "$url_linux" || "$url_linux" == "null" ]]; then
+            echo "Could not parse latest version or URL from API"
+            exit 1
+          fi
+          # Extract commit from URL: .../production/<commit>/linux/x64/...
+          _commit=$(echo "$url_linux" | sed -n 's|.*/production/\([a-f0-9]*\)/.*|\1|p')
+          if [[ -z "$_commit" ]]; then
+            echo "Could not extract commit from URL"
+            exit 1
+          fi
+          older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "_commit=$_commit" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Commit: $_commit | Update: $update_available"
+
+      - name: Download .deb and compute sha512
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          _commit="${{ steps.versions.outputs._commit }}"
+          PKGDIR="src/cursor-bin"
+          deb_url="https://downloads.cursor.com/production/${_commit}/linux/x64/deb/amd64/deb/cursor_${latest}_amd64.deb"
+          curl -sSLo "${PKGDIR}/cursor_${latest}_amd64.deb" "$deb_url"
+          sha_deb=$(sha512sum -b "${PKGDIR}/cursor_${latest}_amd64.deb" | awk '{ print $1 }')
+          echo "sha_deb=$sha_deb" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded assets
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/cursor-bin/cursor_${{ steps.versions.outputs.latest }}_amd64.deb"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/cursor-bin/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          _commit="${{ steps.versions.outputs._commit }}"
+          sha_deb="${{ steps.checksums.outputs.sha_deb }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^_commit=.*/_commit=${_commit}/" "$PKGBUILD"
+          sed -i "s/^sha512sums\[0\]=.*/sha512sums[0]=${sha_deb}/" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel|_commit|sha512sums\[0\])=' "$PKGBUILD"
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GH_API_TOKEN }}
+          branch: update/cursor-bin-${{ steps.versions.outputs.latest }}
+          title: "chore(cursor-bin): bump to ${{ steps.versions.outputs.latest }}"
+          body: |
+            Automated update for **cursor-bin**.
+            - **Previous:** ${{ steps.versions.outputs.current }}
+            - **New:** ${{ steps.versions.outputs.latest }}
+            - `pkgrel` reset to 1; `_commit` and `sha512sums[0]` updated.
+          add-paths: src/cursor-bin/PKGBUILD
+          commit-message: "chore(cursor-bin): bump to ${{ steps.versions.outputs.latest }}"

@@ -65,10 +65,15 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 |---------|------------|
 | amdgpu_top-tui-bin | ✅ |
 | beekeeper-studio-bin | ✅ |
-| cursor-bin | ❌ |
+| catppuccin-cursors-latte | ❌ |
+| catppuccin-cursors-macchiato | ❌ |
+| catppuccin-gtk-theme-latte | ❌ |
+| catppuccin-gtk-theme-macchiato | ❌ |
+| cursor-bin | ✅ |
 | elephant | ❌ |
 | elephant-bluetooth | ❌ |
 | elephant-calc | ❌ |
+| elephant-clipboard | ❌ |
 | elephant-desktopapplications | ❌ |
 | elephant-files | ❌ |
 | elephant-menus | ❌ |
