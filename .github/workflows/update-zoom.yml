@@ -46,8 +46,9 @@ jobs:
             exit 1
           fi
 
-          # Match both zoom.us/client/ and cdn.zoom.us/prod/ URL shapes
-          parsed=$(echo "$download_url" | sed -n 's|.*/\(client\|prod\)/\([0-9][0-9.]*\)\.\([0-9][0-9]*\)/zoom_x86_64\.pkg\.tar\.xz$|\2 \3|p')
+          # Match both zoom.us/client/ and cdn.zoom.us/prod/ URL shapes.
+          # Zoom version is encoded as "<pkgver>.<subver>" where pkgver is always 3 segments.
+          parsed=$(echo "$download_url" | sed -nE 's#^.*/(client|prod)/([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)/zoom_x86_64\.pkg\.tar\.xz$#\2 \3#p')
           latest_pkgver=$(echo "$parsed" | awk '{ print $1 }')
           latest_subver=$(echo "$parsed" | awk '{ print $2 }')
           if [[ -z "$latest_pkgver" || -z "$latest_subver" ]]; then

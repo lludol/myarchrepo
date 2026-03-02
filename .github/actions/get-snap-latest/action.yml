@@ -36,8 +36,16 @@ runs:
         current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
         resp=$(curl -fsSL -H "Snap-Device-Series: 16" -H "User-Agent: Mozilla/5.0" \
           "https://api.snapcraft.io/v2/snaps/info/${SNAP_NAME}")
-        latest=$(echo "$resp" | jq -r '.["channel-map"][0].version')
-        download_url=$(echo "$resp" | jq -r '.["channel-map"][0].download.url')
+        latest=$(jq -r '
+          (."channel-map" // []) as $channels
+          | (( $channels | map(select(.channel.name == "stable")) | .[0] ) // $channels[0] // {})
+          | .version // empty
+        ' <<< "$resp")
+        download_url=$(jq -r '
+          (."channel-map" // []) as $channels
+          | (( $channels | map(select(.channel.name == "stable")) | .[0] ) // $channels[0] // {})
+          | .download.url // empty
+        ' <<< "$resp")
         if [[ -z "$latest" || "$latest" == "null" || -z "$download_url" || "$download_url" == "null" ]]; then
           echo "Could not parse latest version or download URL from Snap API for $SNAP_NAME"
           exit 1
