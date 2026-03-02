@@ -33,23 +33,19 @@ jobs:
           PKGBUILD="src/slack-desktop-wayland/PKGBUILD"
           current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
 
-          download_url=$(
-            curl -sSI "https://slack.com/ssb/download-linux64-beta" \
-              | sed -n 's/^[Ll]ocation: \(.*\)$/\1/p' \
-              | tr -d '\r' \
-              | tail -n1
-          )
-          if [[ -z "$download_url" ]]; then
-            echo "Could not resolve Slack beta download URL from redirect endpoint"
+          # Old redirect endpoint is 404; get latest version from release notes and use known CDN URL pattern
+          latest=$(curl -sS "https://slack.com/intl/en-au/release-notes/linux" \
+            | grep -oE 'Slack [0-9]+\.[0-9]+\.[0-9]+' \
+            | head -1 \
+            | sed 's/Slack //')
+          if [[ -z "$latest" ]]; then
+            echo "Could not parse latest Slack version from release notes"
             exit 1
           fi
 
-          latest=$(echo "$download_url" | sed -n 's|.*/desktop-releases/linux/x64/\([^/]*\)/slack-desktop-[^/]*-amd64\.deb$|\1|p')
-          if [[ -z "$latest" ]]; then
-            latest=$(echo "$download_url" | sed -n 's|.*/slack-desktop-\([^/]*\)-amd64\.deb$|\1|p')
-          fi
-          if [[ -z "$latest" ]]; then
-            echo "Could not parse latest Slack version from URL: $download_url"
+          download_url="https://downloads.slack-edge.com/desktop-releases/linux/x64/${latest}/slack-desktop-${latest}-amd64.deb"
+          if ! curl -sSI -o /dev/null -w '%{http_code}' "$download_url" | grep -q 200; then
+            echo "Could not resolve Slack beta download URL (HTTP check failed): $download_url"
             exit 1
           fi
 
