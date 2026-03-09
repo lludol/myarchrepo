@@ -1,6 +1,6 @@
 # Check for new Cursor release and open a PR to update PKGBUILD.
 # Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
-# Version and download URL from community API (Cursor does not publish GitHub releases).
+# Version and download URL from official Cursor download API.
 
 name: Update cursor-bin
 
@@ -33,17 +33,11 @@ jobs:
         run: |
           PKGBUILD="src/cursor-bin/PKGBUILD"
           current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
-          resp=$(curl -sSL "https://cursor-versions.selfhoster.nl/api/v1/versions?version=latest")
+          resp=$(curl -sSL "https://cursor.com/api/download?platform=linux-x64&releaseTrack=stable")
           latest=$(echo "$resp" | jq -r '.version')
-          url_linux=$(echo "$resp" | jq -r '.platforms["linux-x64"].url')
-          if [[ -z "$latest" || "$latest" == "null" || -z "$url_linux" || "$url_linux" == "null" ]]; then
-            echo "Could not parse latest version or URL from API"
-            exit 1
-          fi
-          # Extract commit from URL: .../production/<commit>/linux/x64/...
-          _commit=$(echo "$url_linux" | sed -n 's|.*/production/\([a-f0-9]*\)/.*|\1|p')
-          if [[ -z "$_commit" ]]; then
-            echo "Could not extract commit from URL"
+          _commit=$(echo "$resp" | jq -r '.commitSha')
+          if [[ -z "$latest" || "$latest" == "null" || -z "$_commit" || "$_commit" == "null" ]]; then
+            echo "Could not parse latest version or commit from Cursor API"
             exit 1
           fi
           older=$(printf '%s\n%s' "$current" "$latest" | sort -V | head -n1)
