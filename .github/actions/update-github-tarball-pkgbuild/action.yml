@@ -1,5 +1,5 @@
 name: Update PKGBUILD from GitHub tarball
-description: Download a GitHub release tarball, validate expected path, compute sha256, and update PKGBUILD.
+description: Validate release tarball structure, then update pkgver/pkgrel/checksums via archlinux-package-action.
 
 inputs:
   repo:
@@ -16,21 +16,15 @@ inputs:
     required: false
     default: ""
 
-outputs:
-  sha256:
-    description: Computed sha256 for the release tarball.
-    value: ${{ steps.update.outputs.sha256 }}
-
 runs:
   using: composite
   steps:
-    - name: Download tarball, validate, and update PKGBUILD
-      id: update
+    - name: Validate required path in tarball
+      if: ${{ inputs.required_path != '' }}
       shell: bash
       env:
         REPO: ${{ inputs.repo }}
         VERSION: ${{ inputs.version }}
-        PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
         REQUIRED_PATH: ${{ inputs.required_path }}
       run: |
         set -euo pipefail
@@ -45,21 +39,26 @@ runs:
           exit 1
         fi
 
-        if [[ -n "${REQUIRED_PATH:-}" ]]; then
-          if ! tar -tzf "$archive_path" | rg -q "^${root_dir}/${REQUIRED_PATH}(/|$)"; then
-            echo "Required path not found in release tarball: ${REQUIRED_PATH}"
-            exit 1
-          fi
+        if ! tar -tzf "$archive_path" | grep -E "^${root_dir}/${REQUIRED_PATH}(/|$)" > /dev/null; then
+          echo "Required path not found in release tarball: ${REQUIRED_PATH}"
+          exit 1
         fi
 
-        sha=$(sha256sum -b "$archive_path" | awk '{ print $1 }')
-
-        sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD_PATH"
-        sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD_PATH"
-        sed -i "s/^sha256sums=.*/sha256sums=('${sha}')/" "$PKGBUILD_PATH"
-
-        echo "sha256=$sha" >> "$GITHUB_OUTPUT"
-        echo "Updated PKGBUILD: $PKGBUILD_PATH"
-        grep -E '^(pkgver|pkgrel|sha256sums)=' "$PKGBUILD_PATH"
-
         rm -f "$archive_path"
+
+    - name: Get PKGBUILD directory
+      id: pkgdir
+      shell: bash
+      run: echo "dir=$(dirname "${{ inputs.pkgbuild_path }}")" >> "$GITHUB_OUTPUT"
+
+    - name: Update PKGBUILD
+      uses: heyhusen/archlinux-package-action@v3.0.0
+      with:
+        path: ${{ steps.pkgdir.outputs.dir }}
+        pkgver: ${{ inputs.version }}
+        pkgrel: 1
+        updpkgsums: true
+        srcinfo: false
+        namcap: true
+        flags: ''
+        archlinux_keyring: false
