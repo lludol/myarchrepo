@@ -40,7 +40,7 @@ jobs:
         run: |
           latest="${{ steps.versions.outputs.latest }}"
           PKGDIR="src/fastmail"
-          appimg="Fastmail-${latest}.AppImage"
+          appimg="com.fastmail.Fastmail-${latest}.AppImage"
           url="https://dl.fastmailcdn.com/desktop/production/linux/x64/${appimg}"
 
           curl -sSLo "${PKGDIR}/${appimg}" "$url"
@@ -52,7 +52,7 @@ jobs:
 
       - name: Clean downloaded assets
         if: steps.versions.outputs.update_available == 'true'
-        run: rm -f "src/fastmail/Fastmail-${{ steps.versions.outputs.latest }}.AppImage"
+        run: rm -f "src/fastmail/com.fastmail.Fastmail-${{ steps.versions.outputs.latest }}.AppImage"
 
       - name: Update PKGBUILD
         if: steps.versions.outputs.update_available == 'true'

@@ -8,10 +8,10 @@ arch=('x86_64')
 options=('!strip')
 depends=('gtk3' 'nss' 'alsa-lib')
 makedepends=('desktop-file-utils')
-_appimg="Fastmail-${pkgver}.AppImage"
+_appimg="com.fastmail.Fastmail-${pkgver}.AppImage"
 source=("${_appimg}::https://dl.fastmailcdn.com/desktop/production/linux/x64/${_appimg}"
         "LICENSE.md") # https://www.fastmail.com/policies/terms-of-service/
-sha512sums=('cb49f9e3812e2c262af374e79bd8905cb508a45bf2c2d6af62eed85af43770872486a55e9425882feda9fb3a57a317a3c18be1e286adaf0c76be7f1b0dfa8474'
+sha512sums=('c6e74e3cd8ce6ae998c43ef26728d09d886e88aa833b5d1c07031d149b5510e7c75626b48c93207544c9c74de8b48067f628ccdffd50a3ac2cab51c5d00ff395'
             'deadcd2bc9bc807c6e88eded3ce76ae04bf32c685ce26f3c6e20e7154613db1034914ddf5f88206aef556f1a4ea9bd9c1d41690cd662d2ad2a74d8fa92fd6323')
 
 prepare() {
@@ -25,7 +25,7 @@ prepare() {
     --set-icon="${pkgname}" \
     --add-category=Network \
     --remove-key=X-AppImage-Version \
-    production.desktop
+    fastmail.desktop
 
   rm "AppRun" "resources/app-update.yml"
 }
@@ -35,14 +35,14 @@ package() {
   cp -a "squashfs-root/." "${pkgdir}/opt/${pkgname}/"
 
   install -d "${pkgdir}/usr/bin"
-  ln -s "/opt/${pkgname}/production" "${pkgdir}/usr/bin/${pkgname}"
+  ln -s "/opt/${pkgname}/fastmail" "${pkgdir}/usr/bin/${pkgname}"
 
   install -d "${pkgdir}/usr/share/applications"
-  ln -s "/opt/${pkgname}/production.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+  ln -s "/opt/${pkgname}/fastmail.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
 
   for i in 16 24 32 48 64 128 256 512 1024; do
     install -d "${pkgdir}/usr/share/icons/hicolor/${i}x${i}/apps"
-    ln -s "/opt/${pkgname}/usr/share/icons/hicolor/${i}x${i}/apps/production.png" "${pkgdir}/usr/share/icons/hicolor/${i}x${i}/apps/${pkgname}.png"
+    ln -s "/opt/${pkgname}/usr/share/icons/hicolor/${i}x${i}/apps/fastmail.png" "${pkgdir}/usr/share/icons/hicolor/${i}x${i}/apps/${pkgname}.png"
   done
 
   find "${pkgdir}" -type d -exec chmod 755 {} +
