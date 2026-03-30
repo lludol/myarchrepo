@@ -75,16 +75,6 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 | catppuccin-gtk-theme-latte | ✅ |
 | catppuccin-gtk-theme-macchiato | ✅ |
 | cursor-bin | ✅ |
-| elephant | ✅ |
-| elephant-bluetooth | ✅ |
-| elephant-calc | ✅ |
-| elephant-clipboard | ✅ |
-| elephant-desktopapplications | ✅ |
-| elephant-files | ✅ |
-| elephant-menus | ✅ |
-| elephant-symbols | ✅ |
-| elephant-unicode | ✅ |
-| elephant-websearch | ✅ |
 | fastmail | ✅ |
 | mongodb-compass-bin | ✅ |
 | overskride | ✅ |
@@ -93,5 +83,4 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 | tradingview | ✅ |
 | trezor-suite | ✅ |
 | visual-studio-code-bin | ✅ |
-| walker | ✅ |
 | zoom | ✅ |

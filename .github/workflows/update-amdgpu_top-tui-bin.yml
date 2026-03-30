@@ -1,4 +1,4 @@
-# Check for new amdgpu_top (TUI bin) release and open a PR to update PKGBUILD.
+# Check for new amdgpu_top (TUI bin) release and commit and push PKGBUILD updates.
 # Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
 
 name: Update amdgpu_top-tui-bin
@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -19,9 +18,16 @@ concurrency:
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - job: default
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
 
       - name: Set skip Create PR flag
         id: skip_create_pr
@@ -60,17 +66,9 @@ jobs:
 
       # Skip when SKIP_CREATE_PR is set (e.g. in .secrets when running with act) so local runs don't fail on git push.
       # GH_API_TOKEN (PAT with repo scope) is required: the default GITHUB_TOKEN cannot create PRs.
-      - name: Create Pull Request
+      - name: Commit and push
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
-        uses: ./.github/actions/create-update-pr
+        uses: ./.github/actions/commit-and-push
         with:
-          token: ${{ secrets.GH_API_TOKEN }}
-          branch: update/amdgpu_top-tui-bin-${{ steps.versions.outputs.latest }}
-          title: "chore(amdgpu_top-tui-bin): bump to ${{ steps.versions.outputs.latest }}"
-          body: |
-            Automated update for **amdgpu_top-tui-bin**.
-            - **Previous:** ${{ steps.versions.outputs.current }}
-            - **New:** ${{ steps.versions.outputs.latest }}
-            - `pkgrel` reset to 1; `sha256sums` updated.
           add_paths: src/amdgpu_top-tui-bin/PKGBUILD
           commit_message: "chore(amdgpu_top-tui-bin): bump to ${{ steps.versions.outputs.latest }}"

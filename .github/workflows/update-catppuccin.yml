@@ -1,4 +1,4 @@
-# Check for new Catppuccin releases and open PRs per package.
+# Check for new Catppuccin releases and update each package via commit and push.
 # Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
 
 name: Update catppuccin
@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -20,6 +19,7 @@ jobs:
   check-and-update:
     runs-on: ubuntu-latest
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         package:
@@ -46,6 +46,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
 
       - name: Set skip Create PR flag
         id: skip_create_pr
@@ -121,17 +123,9 @@ jobs:
           echo "Updated PKGBUILD: $PKGBUILD_PATH"
           grep -E '^(pkgver|pkgrel)=' "$PKGBUILD_PATH"
 
-      - name: Create Pull Request
+      - name: Commit and push
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
-        uses: ./.github/actions/create-update-pr
+        uses: ./.github/actions/commit-and-push
         with:
-          token: ${{ secrets.GH_API_TOKEN }}
-          branch: update/${{ matrix.package.name }}-${{ steps.versions.outputs.latest }}
-          title: "chore(${{ matrix.package.name }}): bump to ${{ steps.versions.outputs.latest }}"
-          body: |
-            Automated update for **${{ matrix.package.name }}**.
-            - **Previous:** ${{ steps.versions.outputs.current }}
-            - **New:** ${{ steps.versions.outputs.latest }}
-            - `pkgrel` reset to 1; `sha256sums` updated from release assets.
           add_paths: ${{ matrix.package.pkgbuild }}
           commit_message: "chore(${{ matrix.package.name }}): bump to ${{ steps.versions.outputs.latest }}"
