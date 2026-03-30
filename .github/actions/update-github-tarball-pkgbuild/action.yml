@@ -3,7 +3,7 @@ description: Validate release tarball structure, then update pkgver/pkgrel/check
 
 inputs:
   repo:
-    description: GitHub owner/repo (for example, abenz1267/elephant).
+    description: GitHub owner/repo (for example, trezor/trezor-suite).
     required: true
   version:
     description: Release version without v prefix.

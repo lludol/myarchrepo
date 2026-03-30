@@ -3,7 +3,7 @@ description: Reads pkgver from PKGBUILD and compares it to latest GitHub release
 
 inputs:
   repo:
-    description: GitHub owner/repo (for example, abenz1267/walker).
+    description: GitHub owner/repo (for example, beekeeper-studio/beekeeper-studio).
     required: true
   pkgbuild_path:
     description: Path to PKGBUILD file.

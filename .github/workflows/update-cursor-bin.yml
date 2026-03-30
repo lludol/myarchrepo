@@ -1,4 +1,4 @@
-# Check for new Cursor release and open a PR to update PKGBUILD.
+# Check for new Cursor release and commit and push PKGBUILD updates.
 # Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
 # Version and download URL from official Cursor download API.
 
@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -20,9 +19,16 @@ concurrency:
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - job: default
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
 
       - name: Set skip Create PR flag
         id: skip_create_pr
@@ -81,17 +87,9 @@ jobs:
           echo "Updated PKGBUILD:"
           grep -E '^(pkgver|pkgrel|_commit|sha512sums\[0\])=' "$PKGBUILD"
 
-      - name: Create Pull Request
+      - name: Commit and push
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
-        uses: ./.github/actions/create-update-pr
+        uses: ./.github/actions/commit-and-push
         with:
-          token: ${{ secrets.GH_API_TOKEN }}
-          branch: update/cursor-bin-${{ steps.versions.outputs.latest }}
-          title: "chore(cursor-bin): bump to ${{ steps.versions.outputs.latest }}"
-          body: |
-            Automated update for **cursor-bin**.
-            - **Previous:** ${{ steps.versions.outputs.current }}
-            - **New:** ${{ steps.versions.outputs.latest }}
-            - `pkgrel` reset to 1; `_commit` and `sha512sums[0]` updated.
           add_paths: src/cursor-bin/PKGBUILD
           commit_message: "chore(cursor-bin): bump to ${{ steps.versions.outputs.latest }}"

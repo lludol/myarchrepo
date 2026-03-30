@@ -7,7 +7,7 @@ SKIP_CREATE_PR=true
 GH_API_TOKEN=ghp_your_token_here
 ```
 
-On GitHub, the **Create Pull Request** step needs a Personal Access Token: the default `GITHUB_TOKEN` is not allowed to create or approve PRs. Add a repo secret `GH_API_TOKEN` (classic PAT with `repo` scope, or fine-grained with **Pull requests: Read and write**) for automated PR creation.
+Workflows commit and push to the default branch. The default `GITHUB_TOKEN` is usually enough. If `main` is protected, add a repo secret `GH_API_TOKEN` (classic PAT with `repo` scope, or fine-grained with **Contents: Read and write**) so checkout and push use that token instead.
 
 Then run a workflow with [act](https://github.com/nektos/act) (Docker required):
 

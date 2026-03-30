@@ -1,4 +1,4 @@
-# Check for new TradingView release (Snap Store) and open a PR to update PKGBUILD.
+# Check for new TradingView release (Snap Store) and commit and push PKGBUILD updates.
 # Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
 # Version and download URL from Snap Store API (api.snapcraft.io).
 
@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -20,9 +19,16 @@ concurrency:
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - job: default
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
 
       - name: Set skip Create PR flag
         id: skip_create_pr
@@ -70,17 +76,9 @@ jobs:
           grep -A 3 '^sha256sums=' "$PKGBUILD"
           grep '\.snap::' "$PKGBUILD"
 
-      - name: Create Pull Request
+      - name: Commit and push
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
-        uses: ./.github/actions/create-update-pr
+        uses: ./.github/actions/commit-and-push
         with:
-          token: ${{ secrets.GH_API_TOKEN }}
-          branch: update/tradingview-${{ steps.versions.outputs.latest }}
-          title: "chore(tradingview): bump to ${{ steps.versions.outputs.latest }}"
-          body: |
-            Automated update for **tradingview** (Snap Store).
-            - **Previous:** ${{ steps.versions.outputs.current }}
-            - **New:** ${{ steps.versions.outputs.latest }}
-            - `pkgrel` reset to 1; `sha256sums[0]` and snap download URL updated.
           add_paths: src/tradingview/PKGBUILD
           commit_message: "chore(tradingview): bump to ${{ steps.versions.outputs.latest }}"

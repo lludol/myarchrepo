@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build only packages whose PKGBUILD version doesn't match the built package in x86_64/
-# or that have no built package yet. Uses repo directory name for build.sh (e.g. build.sh walker).
+# or that have no built package yet. Uses repo directory name for build.sh (e.g. build.sh cursor-bin).
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
