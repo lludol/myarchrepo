@@ -39,7 +39,9 @@ jobs:
         run: |
           PKGBUILD="src/cursor-bin/PKGBUILD"
           current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
-          resp=$(curl -sSL "https://cursor.com/api/download?platform=linux-x64&releaseTrack=stable")
+          # Cursor serves a non-JSON stub when the body is written to a pipe (e.g. command
+          # substitution without -o). Use -o - so curl uses the download path and returns JSON.
+          resp=$(curl -sSL "https://cursor.com/api/download?platform=linux-x64&releaseTrack=stable" -o -)
           latest=$(echo "$resp" | jq -r '.version')
           _commit=$(echo "$resp" | jq -r '.commitSha')
           if [[ -z "$latest" || "$latest" == "null" || -z "$_commit" || "$_commit" == "null" ]]; then
