@@ -1,5 +1,5 @@
 pkgname=amdgpu_top-tui-bin
-pkgver=0.11.3
+pkgver=0.11.4
 pkgrel=1
 pkgdesc="Tool to display AMDGPU usage (TUI only version, binary release)"
 url="https://github.com/Umio-Yasuno/amdgpu_top"
@@ -9,7 +9,7 @@ depends=('libdrm')
 provides=("amdgpu_top")
 conflicts=("amdgpu_top")
 source=("$url/releases/download/v$pkgver/amdgpu-top_without_gui_${pkgver}-1_amd64.deb")
-sha256sums=('f4ddeed1b9bddeaa74064898fa6e1b0f47e3f71f6489e8af6f23ecf5d23f7d67')
+sha256sums=('139ef6382c22e8b8b7e69b585d161c8a884104df335e2ea74f4f78bd6f2ac597')
 
 package() {
   tar -xf data.tar.xz -C "$pkgdir"
