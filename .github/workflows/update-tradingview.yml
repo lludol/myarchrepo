@@ -74,7 +74,7 @@ jobs:
           echo "Updated PKGBUILD:"
           grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
           grep -A 3 '^sha256sums=' "$PKGBUILD"
-          grep '\.snap::' "$PKGBUILD"
+          grep '\.snap.*::' "$PKGBUILD" || true
 
       - name: Commit and push
         if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
