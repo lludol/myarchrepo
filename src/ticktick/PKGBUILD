@@ -1,5 +1,5 @@
 pkgname=ticktick
-pkgver=8.0.0
+pkgver=8.0.10
 pkgrel=1
 pkgdesc='Official desktop application for Linux'
 arch=('x86_64' 'aarch64')
@@ -14,8 +14,8 @@ source_x86_64=("${pkgname}-${pkgver}-amd64.deb::https://d2atcrkye2ik4e.cloudfron
 source_aarch64=("${pkgname}-${pkgver}-arm64.deb::https://d2atcrkye2ik4e.cloudfront.net/download/linux/linux_deb_arm64/${pkgname}-${pkgver}-arm64.deb")
 sha256sums=('72f75bb9cf257f890d8537dedd913ba022b43217f1599479e95043295d056a56'
             'b121aaab894450cb9a1e3381d3ffcc93f639b8dd10d1203c8a742cd511925c40')
-sha256sums_x86_64=('b3c984eba4efdd3c8be2b32fa24e9c33954cea9cd6c4f922be24b7d0a59c375a')
-sha256sums_aarch64=('2e07dae3e5591f55c800c66befe462c31675b26b3040e8ac3a19854a0da9c931')
+sha256sums_x86_64=('e732212e9a2a64cf3e442e18061743c8cab6684837d4ef14e90e600fc068f5eb')
+sha256sums_aarch64=('47d74c1948925d7fc245f557a16df0d8693551f9277e6356a08aa484bfc5449b')
 
 package() {
   tar -xf data.tar.xz -C "${pkgdir}"
