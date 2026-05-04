@@ -8,6 +8,7 @@
 /src/*/*.tmp
 /src/*/.cache/
 /src/*/.*.swp
+/src/*/*.in
 
 # repo-add backup files (regenerated, don't version)
 *.tar.zst.old
