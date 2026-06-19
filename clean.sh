@@ -9,7 +9,9 @@ rm -f src/*/*.tmp
 rm -f src/*/*.html
 rm -f src/*/*.snap
 rm -f src/*/*.tar.gz
+rm -f src/*/*.tar
 rm -f src/*/*.zip
+rm -f src/*/*.exe
 rm -rf src/*/.cache/
 rm -rf src/*/src/
 rm -rf src/*/pkg/
