@@ -1,0 +1,99 @@
+# Check for a new Notion desktop release and commit PKGBUILD updates.
+# Runs weekly (Monday 06:00 UTC) and can be triggered manually (Actions tab -> Run workflow).
+# Latest version comes from the Windows download redirect:
+#   https://www.notion.so/desktop/windows/download
+#     -> 302 Location: https://desktop-release.notion-static.com/Notion%20Setup%20X.Y.Z.exe
+# Only the Notion version + .exe checksum are bumped. The pinned electron /
+# better-sqlite3 / bufferutil versions are left alone (tuned manually per the
+# _elecronver comment in the PKGBUILD).
+
+name: Update notion-app-electron
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        run: |
+          PKGBUILD="src/notion-app-electron/PKGBUILD"
+          current=$(awk -F= '/^pkgver=/{print $2; exit}' "$PKGBUILD")
+
+          # Follow the Windows download redirect and read the versioned .exe name.
+          location=$(curl -sSI "https://www.notion.so/desktop/windows/download" \
+            | tr -d '\r' | awk 'tolower($1)=="location:"{print $2; exit}')
+          # Capture strictly between 'Setup%20' and '.exe' so the %20 digits
+          # don't bleed into the version (e.g. %207.22.0 -> 207.22.0).
+          latest=$(printf '%s\n' "$location" \
+            | sed -nE 's|.*Notion%20Setup%20([0-9]+\.[0-9]+\.[0-9]+)\.exe.*|\1|p')
+
+          if [ -z "$latest" ]; then
+            echo "Could not determine latest Notion version (location: '$location')" >&2
+            exit 1
+          fi
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest"   >> "$GITHUB_OUTPUT"
+          if [ "$current" != "$latest" ]; then
+            echo "update_available=true" >> "$GITHUB_OUTPUT"
+            echo "Notion $current -> $latest"
+          else
+            echo "update_available=false" >> "$GITHUB_OUTPUT"
+            echo "Already at latest ($current)"
+          fi
+
+      - name: Download .exe and compute sha256
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksums
+        run: |
+          latest="${{ steps.versions.outputs.latest }}"
+          url="https://desktop-release.notion-static.com/Notion%20Setup%20${latest}.exe"
+          curl -sSL "$url" -o notion-setup.exe
+          sha_exe=$(sha256sum notion-setup.exe | awk '{print $1}')
+          echo "sha_exe=$sha_exe" >> "$GITHUB_OUTPUT"
+          rm -f notion-setup.exe
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        run: |
+          PKGBUILD="src/notion-app-electron/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          sha_exe="${{ steps.checksums.outputs.sha_exe }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          # The .exe is the FIRST source -> first sha256 entry, on the
+          # 'sha256sums=(...' line. Only that line starts with sha256sums=.
+          sed -i "s|^sha256sums=('[0-9a-f]\{64\}'|sha256sums=('${sha_exe}'|" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          grep -A1 '^sha256sums=' "$PKGBUILD"
+
+      - name: Commit and push
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/commit-and-push
+        with:
+          add_paths: src/notion-app-electron/PKGBUILD
+          commit_message: "chore(notion-app-electron): bump to ${{ steps.versions.outputs.latest }}"
