@@ -47,7 +47,7 @@ usage() {
   echo "Examples:"
   echo "  $0 all"
   echo "  $0 zoom"
-  echo "  $0 tradingview fastmail mongodb-compass-bin"
+  echo "  $0 tradingview fastmail notion-app-electron"
   echo
   echo "Optional env vars:"
   echo "  ACT_IMAGE=<runner-image>   (default: $ACT_IMAGE)"

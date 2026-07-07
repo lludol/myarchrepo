@@ -76,7 +76,6 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 | catppuccin-gtk-theme-macchiato | ✅ |
 | cursor-bin | ✅ |
 | fastmail | ✅ |
-| mongodb-compass-bin | ✅ |
 | overskride | ✅ |
 | slack-desktop-wayland | ✅ |
 | ticktick | ✅ |
