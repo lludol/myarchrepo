@@ -35,7 +35,8 @@ runs:
         PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
         GH_API_TOKEN: ${{ inputs.gh_api_token }}
       run: |
-        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
+        # Strip trailing comments (e.g. "# renovate: ...") and any surrounding quotes/whitespace.
+        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
         CURL_OPTS=()
         [[ -n "${GH_API_TOKEN:-}" ]] && CURL_OPTS=(-H "Authorization: Bearer $GH_API_TOKEN")
         resp=$(curl -sS "${CURL_OPTS[@]}" "https://api.github.com/repos/$REPO/releases/latest")
