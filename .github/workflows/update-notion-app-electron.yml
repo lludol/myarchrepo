@@ -38,7 +38,7 @@ jobs:
         id: versions
         run: |
           PKGBUILD="src/notion-app-electron/PKGBUILD"
-          current=$(awk -F= '/^pkgver=/{print $2; exit}' "$PKGBUILD")
+          current=$(grep '^pkgver=' "$PKGBUILD" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
 
           # Follow the Windows download redirect and read the versioned .exe name.
           location=$(curl -sSI "https://www.notion.so/desktop/windows/download" \

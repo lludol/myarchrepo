@@ -37,7 +37,7 @@ jobs:
         id: versions
         run: |
           PKGBUILD="src/ticktick/PKGBUILD"
-          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          current=$(grep '^pkgver=' "$PKGBUILD" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
 
           download_url_x86_64=$(
             curl -sSI "https://ticktick.com/static/getApp/download?type=linux_deb_x64" \

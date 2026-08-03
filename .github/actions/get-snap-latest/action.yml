@@ -33,7 +33,8 @@ runs:
         SNAP_NAME: ${{ inputs.snap_name }}
         PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
       run: |
-        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
+        # Strip trailing comments (e.g. "# renovate: ...") and any surrounding quotes/whitespace.
+        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
         resp=$(curl -fsSL -H "Snap-Device-Series: 16" -H "User-Agent: Mozilla/5.0" \
           "https://api.snapcraft.io/v2/snaps/info/${SNAP_NAME}")
         latest=$(jq -r '

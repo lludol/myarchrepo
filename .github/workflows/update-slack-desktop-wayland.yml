@@ -37,7 +37,7 @@ jobs:
         id: versions
         run: |
           PKGBUILD="src/slack-desktop-wayland/PKGBUILD"
-          current=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
+          current=$(grep '^pkgver=' "$PKGBUILD" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
 
           # Old redirect endpoint is 404; get latest version from release notes and use known CDN URL pattern
           latest=$(curl -sS "https://slack.com/intl/en-au/release-notes/linux" \
