@@ -1,5 +1,5 @@
 pkgname="trezor-suite"
-pkgver="26.1.2"
+pkgver=26.1.2
 pkgrel=0
 pkgdesc="The simplier, the safer. This AUR just install the pure AppImage."
 arch=("x86_64")
