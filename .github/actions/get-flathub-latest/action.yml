@@ -30,7 +30,8 @@ runs:
         APP_ID: ${{ inputs.app_id }}
         PKGBUILD_PATH: ${{ inputs.pkgbuild_path }}
       run: |
-        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | cut -d= -f2)
+        # Strip trailing comments (e.g. "# renovate: ...") and any surrounding quotes/whitespace.
+        current=$(grep '^pkgver=' "$PKGBUILD_PATH" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
         resp=$(curl -fsSL "https://flathub.org/api/v2/appstream/${APP_ID}")
         latest=$(echo "$resp" | jq -r '.releases[0].version')
         if [[ -z "$latest" || "$latest" == "null" ]]; then

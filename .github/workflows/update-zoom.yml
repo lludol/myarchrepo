@@ -37,8 +37,8 @@ jobs:
         id: versions
         run: |
           PKGBUILD="src/zoom/PKGBUILD"
-          current_pkgver=$(grep '^pkgver=' "$PKGBUILD" | cut -d= -f2)
-          current_subver=$(grep '^_subver=' "$PKGBUILD" | cut -d= -f2)
+          current_pkgver=$(grep '^pkgver=' "$PKGBUILD" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
+          current_subver=$(grep '^_subver=' "$PKGBUILD" | head -n1 | cut -d= -f2- | sed 's/#.*//' | tr -d "\"' ")
           current_full="${current_pkgver}.${current_subver}"
 
           download_url=$(
