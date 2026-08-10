@@ -1,5 +1,5 @@
 pkgname="trezor-suite"
-pkgver=26.7.3
+pkgver=26.7.4
 pkgrel=1
 pkgdesc="The simplier, the safer. This AUR just install the pure AppImage."
 arch=("x86_64")
@@ -16,7 +16,7 @@ source=(
     "LICENSE.md::https://raw.githubusercontent.com/trezor/trezor-suite/master/LICENSE.md" # LICENSE from the official repo
 )
 noextract=($_pkgname.AppImage)
-sha512sums=('6e88189804db3812f71af3cb827154226c173a500213de0c13285974eda65ff224383786101c1cd608cb8ea20380aee3530c0dbb03b57dda88b0de12d0d52f6d'
+sha512sums=('43edf2aec33917d7cf5d33f2ddb0c6217f2de7b78b25964e694fe21d1bcea030f50af0b67dcf83b7a05ecd7799888363631c5d6f45add084f5a610dda66783c6'
             'be00d3d3af3cc4a7b0ac8ca0a5c20a210c1b042862e434b6a8cd230b94d023a62e20c866d72c5e7af70bec5f95b612bfb510466a69aac52cded32f17380766b8'
             'c5b562944a30ee13248c5d67cec96c36e44bdd4f1afa707423e4b3df704b68357e6e5c924b7e46f41312ace83fbad396243f65b0cca2451d0ff1c73870842189'
             'f12c122d7f297511cf6b2cf47e41d0a4c1ced4b6d0c34109646e977e51228a3e9249af00ff757da633df840a60e06b86f31e44dfd980876ab9b33139bed2d32c'
