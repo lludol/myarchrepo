@@ -1,0 +1,138 @@
+# Check the official OpenAI APT repository for a new ChatGPT Linux release.
+# Runs weekly (Monday 04:12 UTC) and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update chatgpt
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '12 4 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - job: default
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest version
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PKGBUILD="src/chatgpt/PKGBUILD"
+          repo_url="https://persistent.oaistatic.com/codex-app-prod/linux/deb"
+          current=$(sed -n 's/^pkgver=//p' "$PKGBUILD" | head -n1)
+          index=$(curl -fsSL "$repo_url/dists/stable/main/binary-amd64/Packages")
+
+          metadata=$(
+            awk '
+              BEGIN { RS=""; FS="\n" }
+              {
+                package = version = filename = sha256 = ""
+                for (i = 1; i <= NF; i++) {
+                  if ($i ~ /^Package: /)  package = substr($i, 10)
+                  if ($i ~ /^Version: /)  version = substr($i, 10)
+                  if ($i ~ /^Filename: /) filename = substr($i, 11)
+                  if ($i ~ /^SHA256: /)   sha256 = substr($i, 9)
+                }
+                if (package == "chatgpt") {
+                  print version "\t" filename "\t" sha256
+                  exit
+                }
+              }
+            ' <<< "$index"
+          )
+          IFS=$'\t' read -r latest filename index_sha256 <<< "$metadata"
+
+          if [[ -z "$latest" || -z "$filename" || ! "$index_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Could not parse ChatGPT metadata from the OpenAI APT index"
+            exit 1
+          fi
+          if [[ ! "$latest" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+            echo "Upstream version is not a valid Arch pkgver: $latest"
+            exit 1
+          fi
+
+          older=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | head -n1)
+          update_available=false
+          [[ "$older" == "$current" && "$current" != "$latest" ]] && update_available=true
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "filename=$filename" >> "$GITHUB_OUTPUT"
+          echo "index_sha256=$index_sha256" >> "$GITHUB_OUTPUT"
+          echo "repo_url=$repo_url" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Download and verify DEB
+        if: steps.versions.outputs.update_available == 'true'
+        id: checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest="${{ steps.versions.outputs.latest }}"
+          filename="${{ steps.versions.outputs.filename }}"
+          expected_sha256="${{ steps.versions.outputs.index_sha256 }}"
+          repo_url="${{ steps.versions.outputs.repo_url }}"
+          deb="src/chatgpt/chatgpt-${latest}-x86_64.deb"
+
+          curl -fsSLo "$deb" "$repo_url/$filename"
+          echo "$expected_sha256  $deb" | sha256sum --check --strict
+
+          deb_version=$(dpkg-deb --field "$deb" Version)
+          if [[ "$deb_version" != "$latest" ]]; then
+            echo "APT index version ($latest) does not match DEB version ($deb_version)"
+            exit 1
+          fi
+
+          echo "sha256=$expected_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Clean downloaded asset
+        if: steps.versions.outputs.update_available == 'true'
+        run: rm -f "src/chatgpt/chatgpt-${{ steps.versions.outputs.latest }}-x86_64.deb"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PKGBUILD="src/chatgpt/PKGBUILD"
+          latest="${{ steps.versions.outputs.latest }}"
+          sha256="${{ steps.checksum.outputs.sha256 }}"
+
+          sed -i "s/^pkgver=.*/pkgver=${latest}/" "$PKGBUILD"
+          sed -i 's/^pkgrel=.*/pkgrel=1/' "$PKGBUILD"
+          sed -i "s/^sha256sums=(.*/sha256sums=('${sha256}')/" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel|sha256sums)=' "$PKGBUILD"
+
+      - name: Commit and push
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/commit-and-push
+        with:
+          add_paths: src/chatgpt/PKGBUILD
+          commit_message: "chore(chatgpt): bump to ${{ steps.versions.outputs.latest }}"

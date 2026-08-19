@@ -1,0 +1,63 @@
+pkgname=chatgpt
+pkgver=26.814.41957
+pkgrel=1
+pkgdesc='ChatGPT desktop app by OpenAI'
+arch=('x86_64')
+url='https://developers.openai.com/codex/app/'
+license=('LicenseRef-proprietary')
+depends=(
+  'alsa-lib'
+  'at-spi2-core'
+  'cairo'
+  'dbus'
+  'expat'
+  'gcc-libs'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'libcups'
+  'libdrm'
+  'libglvnd'
+  'libnotify'
+  'libusb'
+  'libx11'
+  'libxcb'
+  'libxcomposite'
+  'libxdamage'
+  'libxext'
+  'libxfixes'
+  'libxkbcommon'
+  'libxrandr'
+  'mesa'
+  'nspr'
+  'nss'
+  'pango'
+  'systemd-libs'
+  'vulkan-driver'
+  'xdg-utils'
+  'xz'
+)
+optdepends=(
+  'apparmor: support the bundled ChatGPT user-namespace profile'
+  'git: Git integration in Codex'
+  'org.freedesktop.secrets: store credentials in a desktop keyring'
+  'pulseaudio: PulseAudio support'
+)
+options=('!strip' '!debug')
+backup=('etc/apparmor.d/chatgpt')
+source=("${pkgname}-${pkgver}-x86_64.deb::https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${pkgver}_amd64.deb")
+sha256sums=('4778b26a7abd08647214d5b05c17bd3ebe2d9688d146dabf017c1a2faf93ac7d')
+noextract=("${pkgname}-${pkgver}-x86_64.deb")
+
+package() {
+  local data_archive
+  data_archive=$(bsdtar -tf "${srcdir}/${noextract[0]}" | sed -n '/^data\.tar\./{p;q;}')
+  if [[ -z "${data_archive}" ]]; then
+    error 'Could not find the data archive in the DEB'
+    return 1
+  fi
+
+  bsdtar -xOf "${srcdir}/${noextract[0]}" "${data_archive}" |
+    bsdtar --no-same-owner --exclude './usr/share/lintian' -xf - -C "${pkgdir}"
+}

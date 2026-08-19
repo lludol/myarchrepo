@@ -74,6 +74,7 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 | catppuccin-cursors-macchiato | ✅ |
 | catppuccin-gtk-theme-latte | ✅ |
 | catppuccin-gtk-theme-macchiato | ✅ |
+| chatgpt | ✅ |
 | cursor-bin | ✅ |
 | fastmail | ✅ |
 | overskride | ✅ |
