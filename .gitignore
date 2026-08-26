@@ -10,6 +10,17 @@
 /src/*/.*.swp
 /src/*/*.in
 
+# Generated Pacman repository artifacts are published to Cloudflare R2.
+/x86_64/*.pkg.tar.zst
+/x86_64/*.pkg.tar.zst.sig
+/x86_64/*.pkg.tar.xz
+/x86_64/*.pkg.tar.xz.sig
+/x86_64/*.db
+/x86_64/*.db.*
+/x86_64/*.files
+/x86_64/*.files.*
+/x86_64/*.log
+
 # repo-add backup files (regenerated, don't version)
 *.tar.zst.old
 
