@@ -1,6 +1,6 @@
 #!/bin/bash
-# Copy repo output to pacman sync dir. Run after build.sh on the build machine,
-# or on other machines after pulling the repo (git pull + git lfs pull).
+# Copy locally available repo output to pacman's sync directory.
+# The normal repository workflow serves packages from R2 instead.
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 TARGET="/var/lib/pacman/sync/myarchrepo"
 

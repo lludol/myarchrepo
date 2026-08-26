@@ -1,5 +1,5 @@
 [Unit]
-Description=Git pull myarchrepo (git pull + git lfs pull)
+Description=Git pull myarchrepo
 After=network-online.target
 Wants=network-online.target
 
@@ -7,7 +7,6 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/home/lludol/myarchrepo
 ExecStart=/usr/bin/git pull
-ExecStart=/usr/bin/git lfs pull
 
 [Install]
 WantedBy=default.target
