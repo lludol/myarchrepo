@@ -1,5 +1,5 @@
 pkgname=chatgpt
-pkgver=26.818.41705
+pkgver=26.825.51511
 pkgrel=1
 pkgdesc='ChatGPT desktop app by OpenAI'
 arch=('x86_64')
@@ -47,7 +47,7 @@ optdepends=(
 options=('!strip' '!debug')
 backup=('etc/apparmor.d/chatgpt')
 source=("${pkgname}-${pkgver}-x86_64.deb::https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${pkgver}_amd64.deb")
-sha256sums=('c927c985577bde5baccecc77f02e14b311d94e6230156621faf92579ac036a55')
+sha256sums=('3554b0022c6cfb513326f43fd11f718835a77086ac4d7ca2ff3ebbba2d4c7f45')
 noextract=("${pkgname}-${pkgver}-x86_64.deb")
 
 package() {
