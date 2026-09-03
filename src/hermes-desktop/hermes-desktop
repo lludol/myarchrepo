@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+
+XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"${HOME}/.config"}
+
+# Allow per-user Electron flags without editing the package-owned launcher.
+if [[ -r "${XDG_CONFIG_HOME}/hermes-desktop-flags.conf" ]]; then
+  mapfile -t HERMES_FLAGS < <(grep -Ev '^\s*(#|$)' "${XDG_CONFIG_HOME}/hermes-desktop-flags.conf")
+fi
+
+# This package contains only the GUI. On first launch choose "Connect to an
+# existing Hermes" and enter the URL of the remote `hermes serve` instance.
+export HERMES_DESKTOP_IGNORE_EXISTING=1
+exec electron40 /usr/lib/hermes-desktop/app.asar "${HERMES_FLAGS[@]}" "$@"

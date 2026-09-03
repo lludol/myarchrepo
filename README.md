@@ -113,6 +113,7 @@ List AUR pkgs to migrate: `pacman -Qm`. Build them here instead.
 | chatgpt | ✅ |
 | cursor-bin | ✅ |
 | fastmail | ✅ |
+| hermes-desktop | ✅ |
 | overskride | ✅ |
 | slack-desktop-wayland | ✅ |
 | ticktick | ✅ |
