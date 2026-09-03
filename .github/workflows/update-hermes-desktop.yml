@@ -1,0 +1,194 @@
+# Check for a new Hermes Agent release and commit PKGBUILD updates.
+# Runs weekly (Monday 04:45 UTC) and can be triggered manually (Actions tab -> Run workflow).
+# Hermes uses date-based Git tags, while its package version is stored in pyproject.toml.
+
+name: Update hermes-desktop
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '45 4 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - job: default
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get current and latest release metadata
+        id: versions
+        shell: bash
+        env:
+          GH_API_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO='NousResearch/hermes-agent'
+          PKGBUILD='src/hermes-desktop/PKGBUILD'
+          current=$(sed -n 's/^pkgver=//p' "$PKGBUILD" | head -n1)
+          current_tag=$(sed -nE "s/^_tag='([^']+)'/\1/p" "$PKGBUILD" | head -n1)
+
+          auth=(-H "Authorization: Bearer $GH_API_TOKEN")
+          release=$(curl -fsSL "${auth[@]}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${REPO}/releases/latest")
+          tag=$(jq -er '.tag_name | select(type == "string" and length > 0)' <<< "$release")
+
+          if [[ ! "$tag" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Unsupported upstream tag: $tag" >&2
+            exit 1
+          fi
+
+          temp_dir=$(mktemp -d)
+          trap 'rm -rf -- "$temp_dir"' EXIT
+          archive="$temp_dir/hermes-agent.tar.gz"
+          listing="$temp_dir/archive.list"
+          curl -fsSLo "$archive" "${auth[@]}" \
+            "https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
+          tar -tzf "$archive" > "$listing"
+
+          root_dir=$(sed -n '1s#/.*##p' "$listing")
+          expected_root="hermes-agent-${tag#v}"
+          if [[ "$root_dir" != "$expected_root" ]]; then
+            echo "Unexpected archive root: $root_dir (expected $expected_root)" >&2
+            exit 1
+          fi
+          for required in pyproject.toml apps/desktop/package.json; do
+            if ! grep -Fqx "$root_dir/$required" "$listing"; then
+              echo "Required file is missing from release archive: $required" >&2
+              exit 1
+            fi
+          done
+
+          pyproject=$(tar -xOf "$archive" "$root_dir/pyproject.toml")
+          latest=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' <<< "$pyproject")
+          electron_version=$(tar -xOf "$archive" "$root_dir/apps/desktop/package.json" \
+            | jq -er '.build.electronVersion')
+          source_sha256=$(sha256sum "$archive" | awk '{print $1}')
+
+          encoded_tag=$(jq -rn --arg tag "$tag" '$tag | @uri')
+          commit=$(curl -fsSL "${auth[@]}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${REPO}/commits/${encoded_tag}" \
+            | jq -er '.sha | select(test("^[0-9a-f]{40}$"))')
+
+          if [[ ! "$current" =~ ^[0-9]+([.][0-9]+)+$ ]]; then
+            echo "Current pkgver is invalid: $current" >&2
+            exit 1
+          fi
+          if [[ ! "$latest" =~ ^[0-9]+([.][0-9]+)+$ ]]; then
+            echo "Upstream version is not a valid Arch pkgver: $latest" >&2
+            exit 1
+          fi
+          if [[ ! "$electron_version" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "Invalid upstream Electron version: $electron_version" >&2
+            exit 1
+          fi
+
+          update_available=false
+          if [[ "$current" == "$latest" ]]; then
+            [[ "$current_tag" != "$tag" ]] && update_available=true
+          else
+            older=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | head -n1)
+            [[ "$older" == "$current" ]] && update_available=true
+          fi
+
+          {
+            echo "current=$current"
+            echo "current_tag=$current_tag"
+            echo "latest=$latest"
+            echo "tag=$tag"
+            echo "electron_version=$electron_version"
+            echo "commit=$commit"
+            echo "source_sha256=$source_sha256"
+            echo "update_available=$update_available"
+          } >> "$GITHUB_OUTPUT"
+          echo "Current: $current ($current_tag) | Latest: $latest ($tag) | Update: $update_available"
+
+      - name: Download Electron headers and compute checksum
+        if: steps.versions.outputs.update_available == 'true'
+        id: headers
+        shell: bash
+        env:
+          ELECTRON_VERSION: ${{ steps.versions.outputs.electron_version }}
+        run: |
+          set -euo pipefail
+
+          PKGBUILD='src/hermes-desktop/PKGBUILD'
+          packaged_major=$(sed -nE "s/^[[:space:]]*'electron([0-9]+)'/\1/p" "$PKGBUILD" | head -n1)
+          upstream_major=${ELECTRON_VERSION%%.*}
+          if [[ -z "$packaged_major" || "$packaged_major" != "$upstream_major" ]]; then
+            echo "Electron major changed: packaged electron${packaged_major:-?}, upstream electron${upstream_major}." >&2
+            echo 'Update the dependency, launcher, and electronDist path manually.' >&2
+            exit 1
+          fi
+
+          headers="$RUNNER_TEMP/electron-headers-${ELECTRON_VERSION}.tar.gz"
+          curl -fsSLo "$headers" \
+            "https://www.electronjs.org/headers/v${ELECTRON_VERSION}/node-v${ELECTRON_VERSION}-headers.tar.gz"
+          sha256=$(sha256sum "$headers" | awk '{print $1}')
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Update PKGBUILD
+        if: steps.versions.outputs.update_available == 'true'
+        shell: bash
+        env:
+          LATEST: ${{ steps.versions.outputs.latest }}
+          TAG: ${{ steps.versions.outputs.tag }}
+          ELECTRON_VERSION: ${{ steps.versions.outputs.electron_version }}
+          COMMIT: ${{ steps.versions.outputs.commit }}
+          SOURCE_SHA256: ${{ steps.versions.outputs.source_sha256 }}
+          HEADERS_SHA256: ${{ steps.headers.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+
+          PKGBUILD='src/hermes-desktop/PKGBUILD'
+          sed -i "s/^pkgver=.*/pkgver=${LATEST}/" "$PKGBUILD"
+          sed -i 's/^pkgrel=.*/pkgrel=1/' "$PKGBUILD"
+          sed -i "s/^_tag=.*/_tag='${TAG}'/" "$PKGBUILD"
+          sed -i "s/^_electronver=.*/_electronver='${ELECTRON_VERSION}'/" "$PKGBUILD"
+          sed -i "s/^_commit=.*/_commit='${COMMIT}'/" "$PKGBUILD"
+          sed -i -E \
+            "s|^sha256sums=\\('[0-9a-f]{64}'|sha256sums=('${SOURCE_SHA256}'|" \
+            "$PKGBUILD"
+          sed -i -E \
+            "0,/^[[:space:]]*'[0-9a-f]{64}'/s||            '${HEADERS_SHA256}'|" \
+            "$PKGBUILD"
+
+          mapfile -t hashes < <(grep -oE "'[0-9a-f]{64}'" "$PKGBUILD" | tr -d "'")
+          if [[ "${hashes[0]:-}" != "$SOURCE_SHA256" || "${hashes[1]:-}" != "$HEADERS_SHA256" ]]; then
+            echo 'Failed to update the two downloaded-source checksums' >&2
+            exit 1
+          fi
+
+          echo 'Updated PKGBUILD:'
+          grep -E '^(pkgver|pkgrel|_tag|_electronver|_commit|sha256sums)=' "$PKGBUILD"
+          sed -n '/^sha256sums=/,+3p' "$PKGBUILD"
+
+      - name: Commit and push
+        if: steps.versions.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/commit-and-push
+        with:
+          add_paths: src/hermes-desktop/PKGBUILD
+          commit_message: "chore(hermes-desktop): bump to ${{ steps.versions.outputs.latest }}"

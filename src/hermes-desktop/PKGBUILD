@@ -1,0 +1,85 @@
+pkgname=hermes-desktop
+pkgver=0.21.0
+pkgrel=1
+pkgdesc='Native Hermes Agent desktop client (supports remote gateways)'
+arch=('x86_64')
+url='https://hermes-agent.nousresearch.com/desktop'
+license=('MIT')
+depends=(
+  'electron40'
+)
+makedepends=(
+  'nodejs'
+  'npm'
+  'python'
+)
+optdepends=(
+  'org.freedesktop.secrets: securely store remote gateway credentials'
+)
+options=('!debug')
+
+_tag='v2026.8.31'
+_electronver='40.10.2'
+_commit='6e8f8418e6378eb2617e4de074e13dedd091b8af'
+source=(
+  "${pkgname}-${pkgver}.tar.gz::https://github.com/NousResearch/hermes-agent/archive/refs/tags/${_tag}.tar.gz"
+  "electron-headers-${_electronver}.tar.gz::https://www.electronjs.org/headers/v${_electronver}/node-v${_electronver}-headers.tar.gz"
+  'hermes-desktop'
+  'hermes-desktop.desktop'
+)
+sha256sums=('78fb3ff707ec1d17044b875ecac8bef28aa39d44242824f6871ca40afe7bf217'
+            'de1d91f029485ac5bb3eb542c2e57348dfd4d1714cf9caa940c49dba66306563'
+            '6526ce2e45480e2771d32b63720290477fffb32becb6c5ac0e5b949b6c463a89'
+            '540c3afcdaca4ecb266a7db1b79e6d5cbdef2944fffd056d85064b9eea2c5fdd')
+
+prepare() {
+  cd "hermes-agent-${_tag#v}"
+
+  # Keep dependency installation non-interactive and avoid downloading the
+  # bundled Electron runtime; the package uses Arch's electron40 instead.
+  npm ci --ignore-scripts --cache "${srcdir}/npm-cache"
+
+  # get-windows is optional and has no Linux build. Leaving its binding.gyp in
+  # node_modules makes electron-rebuild attempt (and fail) to compile it.
+  rm -rf node_modules/get-windows
+}
+
+build() {
+  cd "hermes-agent-${_tag#v}"
+
+  # node-pty must be compiled for Electron's ABI. The separately checksummed
+  # headers keep this step offline and reproducible.
+  export npm_config_nodedir="${srcdir}/node_headers"
+  export GITHUB_SHA="${_commit}"
+  npm run build --workspace apps/desktop
+
+  cd apps/desktop
+  npm run builder -- --linux --dir -c.electronDist=/usr/lib/electron40
+}
+
+package() {
+  cd "hermes-agent-${_tag#v}"
+
+  local resources='apps/desktop/release/linux-unpacked/resources'
+  install -d "${pkgdir}/usr/lib/${pkgname}"
+  install -m644 "${resources}/app.asar" \
+    "${pkgdir}/usr/lib/${pkgname}/app.asar"
+  cp -r "${resources}/app.asar.unpacked" \
+    "${pkgdir}/usr/lib/${pkgname}/app.asar.unpacked"
+
+  # electron-builder copies node-gyp intermediates next to the native addon.
+  # They are unnecessary at runtime and leak the temporary build path.
+  local pty_release="${pkgdir}/usr/lib/${pkgname}/app.asar.unpacked/dist/node_modules/node-pty/build/Release"
+  rm -rf "${pty_release}/.deps" "${pty_release}/node-addon-api" \
+    "${pty_release}/obj.target"
+  rm -f "${pty_release}/.forge-meta"
+
+  install -Dm755 "${srcdir}/hermes-desktop" \
+    "${pkgdir}/usr/bin/hermes-desktop"
+  install -Dm644 "${srcdir}/hermes-desktop.desktop" \
+    "${pkgdir}/usr/share/applications/hermes-desktop.desktop"
+  install -Dm644 apps/desktop/assets/icon.png \
+    "${pkgdir}/usr/share/icons/hicolor/512x512/apps/hermes-desktop.png"
+  install -Dm644 LICENSE \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
