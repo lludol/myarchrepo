@@ -1,4 +1,4 @@
-: ${_electron_version=38}
+: ${_electron_version=41}
 
 _pkgname="tradingview"
 pkgname="$_pkgname"
