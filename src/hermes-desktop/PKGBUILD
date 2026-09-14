@@ -1,5 +1,5 @@
 pkgname=hermes-desktop
-pkgver=0.21.0
+pkgver=0.21.2
 pkgrel=1
 pkgdesc='Native Hermes Agent desktop client (supports remote gateways)'
 arch=('x86_64')
@@ -18,16 +18,16 @@ optdepends=(
 )
 options=('!debug')
 
-_tag='v2026.8.31'
+_tag='v2026.9.11'
 _electronver='40.10.2'
-_commit='6e8f8418e6378eb2617e4de074e13dedd091b8af'
+_commit='939e45c91d751fadd94dcd1b873ac3cb44846213'
 source=(
   "${pkgname}-${pkgver}.tar.gz::https://github.com/NousResearch/hermes-agent/archive/refs/tags/${_tag}.tar.gz"
   "electron-headers-${_electronver}.tar.gz::https://www.electronjs.org/headers/v${_electronver}/node-v${_electronver}-headers.tar.gz"
   'hermes-desktop'
   'hermes-desktop.desktop'
 )
-sha256sums=('78fb3ff707ec1d17044b875ecac8bef28aa39d44242824f6871ca40afe7bf217'
+sha256sums=('bf45fc6c40ad770e30dfa7677ee6804a24be1a7eab768b283a0883c64662d76e'
             'de1d91f029485ac5bb3eb542c2e57348dfd4d1714cf9caa940c49dba66306563'
             '6526ce2e45480e2771d32b63720290477fffb32becb6c5ac0e5b949b6c463a89'
             '540c3afcdaca4ecb266a7db1b79e6d5cbdef2944fffd056d85064b9eea2c5fdd')
