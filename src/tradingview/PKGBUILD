@@ -2,7 +2,7 @@
 
 _pkgname="tradingview"
 pkgname="$_pkgname"
-pkgver=3.4.0
+pkgver=3.4.1
 pkgrel=1
 pkgdesc='Charting platform for traders and investors'
 arch=('x86_64')
@@ -25,11 +25,11 @@ options=('!debug' '!strip')
 _terms_of_use="$_pkgname-eula"
 _pkgsrc="$_pkgname-$pkgver"
 source=(
-  "$_pkgsrc.snap"::"https://api.snapcraft.io/api/v1/snaps/download/nJdITJ6ZJxdvfu8Ch7n5kH5P99ClzBYV_73.snap"
+  "$_pkgsrc.snap"::"https://api.snapcraft.io/api/v1/snaps/download/nJdITJ6ZJxdvfu8Ch7n5kH5P99ClzBYV_74.snap"
   "$_terms_of_use.html"::"https://www.tradingview.com/policies/"
 )
 sha256sums=(
-  'a351a6a059dcfcd6b7ecd9578e2863b0ee142061d1eae4e583fe2b0022eb287e'
+  '7c355bf31609e17b57434048217530da6b3451ab536dbae681bc0d47d706f670'
   'SKIP'
 )
 
