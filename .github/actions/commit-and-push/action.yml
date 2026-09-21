@@ -1,6 +1,6 @@
 name: Commit and push
 description: >-
-  Stage paths, commit on the current branch, and push to origin.
+  Stage paths, commit on the current branch, rebase on concurrent updates, and push to origin.
   Use actions/checkout with token (e.g. secrets.GH_API_TOKEN || github.token) so push is authenticated.
 
 inputs:
@@ -30,4 +30,24 @@ runs:
           exit 0
         fi
         git commit -m "$COMMIT_MSG"
-        git push origin "HEAD:${GITHUB_REF_NAME}"
+
+        # Other updater workflows may advance the branch after this job checks
+        # it out. Rebase the generated commit and retry if another push wins the
+        # race between our fetch and push.
+        max_attempts=5
+        for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase FETCH_HEAD
+
+          if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            exit 0
+          fi
+
+          if ((attempt == max_attempts)); then
+            echo "Failed to push after ${max_attempts} attempts." >&2
+            exit 1
+          fi
+
+          echo "Push raced with another update; retrying (${attempt}/${max_attempts})..."
+          sleep "$attempt"
+        done
