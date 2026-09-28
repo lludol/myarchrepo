@@ -48,7 +48,8 @@ jobs:
           current_tag=$(sed -nE "s/^_tag='([^']+)'/\1/p" "$PKGBUILD" | head -n1)
 
           auth=(-H "Authorization: Bearer $GH_API_TOKEN")
-          release=$(curl -fsSL "${auth[@]}" \
+          curl_retry=(--retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 15)
+          release=$(curl "${curl_retry[@]}" -fsSL "${auth[@]}" \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${REPO}/releases/latest")
@@ -63,8 +64,8 @@ jobs:
           trap 'rm -rf -- "$temp_dir"' EXIT
           archive="$temp_dir/hermes-agent.tar.gz"
           listing="$temp_dir/archive.list"
-          curl -fsSLo "$archive" "${auth[@]}" \
-            "https://github.com/${REPO}/archive/refs/tags/${tag}.tar.gz"
+          curl "${curl_retry[@]}" -fsSLo "$archive" \
+            "https://codeload.github.com/${REPO}/tar.gz/refs/tags/${tag}"
           tar -tzf "$archive" > "$listing"
 
           root_dir=$(sed -n '1s#/.*##p' "$listing")
@@ -87,7 +88,7 @@ jobs:
           source_sha256=$(sha256sum "$archive" | awk '{print $1}')
 
           encoded_tag=$(jq -rn --arg tag "$tag" '$tag | @uri')
-          commit=$(curl -fsSL "${auth[@]}" \
+          commit=$(curl "${curl_retry[@]}" -fsSL "${auth[@]}" \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${REPO}/commits/${encoded_tag}" \
@@ -145,7 +146,8 @@ jobs:
           fi
 
           headers="$RUNNER_TEMP/electron-headers-${ELECTRON_VERSION}.tar.gz"
-          curl -fsSLo "$headers" \
+          curl --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 15 \
+            -fsSLo "$headers" \
             "https://www.electronjs.org/headers/v${ELECTRON_VERSION}/node-v${ELECTRON_VERSION}-headers.tar.gz"
           sha256=$(sha256sum "$headers" | awk '{print $1}')
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
