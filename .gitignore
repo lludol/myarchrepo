@@ -5,6 +5,7 @@
 /src/*/*.tar.xz
 /src/*/*.AppImage*
 /src/*/*.deb
+/src/*/*.exe
 /src/*/*.tmp
 /src/*/.cache/
 /src/*/.*.swp

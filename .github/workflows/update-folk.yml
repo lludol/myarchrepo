@@ -1,0 +1,107 @@
+# Check for a new folk Windows release and commit PKGBUILD updates.
+# Runs weekly and can be triggered manually (Actions tab -> Run workflow).
+
+name: Update folk
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '18 4 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - job: default
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_API_TOKEN || github.token }}
+
+      - name: Set skip Create PR flag
+        id: skip_create_pr
+        run: echo "skip=${{ secrets.SKIP_CREATE_PR }}" >> "$GITHUB_OUTPUT"
+
+      - name: Download installer and inspect release
+        id: release
+        run: |
+          set -euo pipefail
+          PKGBUILD="src/folk/PKGBUILD"
+          installer="${RUNNER_TEMP}/folk_latest.exe"
+
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$installer" \
+            "https://download.folk.app/folk_latest.exe"
+
+          # electron-builder embeds ProductVersion as adjacent UTF-16LE
+          # strings. The three-component value is the public folk version.
+          latest=$(
+            strings -el "$installer" |
+              awk '
+                found && /^[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }
+                $0 == "ProductVersion" { found=1 }
+              '
+          )
+          if [[ -z "$latest" ]]; then
+            echo "Could not read ProductVersion from the folk installer" >&2
+            exit 1
+          fi
+
+          current=$(sed -n 's/^pkgver=//p' "$PKGBUILD" | head -n1)
+          current_pkgrel=$(sed -n 's/^pkgrel=//p' "$PKGBUILD" | head -n1)
+          current_sha256=$(sed -n "/^sha256sums=(/,/^)/s/^  '\\([0-9a-f]\\{64\\}\\)'$/\\1/p" "$PKGBUILD" | head -n1)
+          sha256=$(sha256sum "$installer" | awk '{ print $1 }')
+          update_available=false
+          next_pkgrel=1
+          newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)
+          if [[ "$current" != "$latest" && "$newest" == "$latest" ]]; then
+            update_available=true
+          elif [[ "$current" == "$latest" && "$current_sha256" != "$sha256" ]]; then
+            update_available=true
+            next_pkgrel=$((current_pkgrel + 1))
+            echo "Upstream repacked folk ${latest}; bumping pkgrel to ${next_pkgrel}"
+          elif [[ "$current" != "$latest" ]]; then
+            echo "Ignoring older upstream version ${latest} (current: ${current})"
+          fi
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "pkgrel=$next_pkgrel" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "update_available=$update_available" >> "$GITHUB_OUTPUT"
+          echo "Current: $current | Latest: $latest | Update: $update_available"
+
+      - name: Update PKGBUILD
+        if: steps.release.outputs.update_available == 'true'
+        env:
+          LATEST: ${{ steps.release.outputs.latest }}
+          PKGREL: ${{ steps.release.outputs.pkgrel }}
+          SHA256: ${{ steps.release.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          PKGBUILD="src/folk/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${LATEST}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=${PKGREL}/" "$PKGBUILD"
+          sed -i "0,/^  '[0-9a-f]\\{64\\}'$/s//  '${SHA256}'/" "$PKGBUILD"
+
+          echo "Updated PKGBUILD:"
+          grep -E '^(pkgver|pkgrel)=' "$PKGBUILD"
+          sed -n '/^sha256sums=(/,/^)/p' "$PKGBUILD"
+
+      - name: Commit and push
+        if: steps.release.outputs.update_available == 'true' && steps.skip_create_pr.outputs.skip != 'true'
+        uses: ./.github/actions/commit-and-push
+        with:
+          add_paths: src/folk/PKGBUILD
+          commit_message: "chore(folk): bump to ${{ steps.release.outputs.latest }}-${{ steps.release.outputs.pkgrel }}"
