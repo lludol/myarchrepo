@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=folk
+GenericName=Contact Manager
+Comment=Organize, collaborate, and activate your network
+Exec=folk %U
+Icon=folk
+Terminal=false
+Type=Application
+StartupNotify=true
+StartupWMClass=folk.exe
+Categories=Office;
+MimeType=x-scheme-handler/folkapp;

@@ -1,0 +1,55 @@
+pkgname=folk
+pkgver=2026.10.50706
+pkgrel=1
+pkgdesc='Collaborative contact management desktop app (Wine)'
+arch=('x86_64')
+url='https://www.folk.app/'
+license=('LicenseRef-proprietary')
+depends=(
+  'wine'
+  'xdg-utils'
+)
+makedepends=(
+  '7zip'
+  'imagemagick'
+)
+options=('!strip' '!debug')
+
+_installer="${pkgname}-${pkgver}.exe"
+source=(
+  "${_installer}::https://download.folk.app/folk_latest.exe"
+  'folk'
+  'folk.desktop'
+)
+sha256sums=(
+  'a39d6ed6225ec31b3cff2d9631ed36c3906d4b9bf9b7bb79e61a217d49065694'
+  'f413826a72966cb5c9e432dee2cad1637c3d38721e163ccbfea4ba9e4461faad'
+  'b348101ace4108f4008c6aa3b4a3533777f1c0783bdb8f233eae995cd4e382a8'
+)
+noextract=("${_installer}")
+
+prepare() {
+  rm -rf app installer icon
+  mkdir -p app installer icon
+
+  7z x -y -oinstaller "${_installer}" '$PLUGINSDIR/app-64.7z'
+  7z x -y -oapp 'installer/$PLUGINSDIR/app-64.7z'
+  7z x -y -oicon app/folk.exe '.rsrc/1033/ICON/9.ico'
+  magick 'icon/.rsrc/1033/ICON/9.ico' folk.png
+
+  # Updates are delivered by pacman; do not let electron-updater install a
+  # second, unmanaged copy inside the Wine prefix.
+  rm -f app/resources/app-update.yml
+}
+
+package() {
+  install -d "${pkgdir}/usr/lib/${pkgname}"
+  cp -r app/. "${pkgdir}/usr/lib/${pkgname}/"
+  find "${pkgdir}/usr/lib/${pkgname}" -type d -exec chmod 755 {} +
+
+  install -Dm755 folk "${pkgdir}/usr/bin/${pkgname}"
+  install -Dm644 folk.desktop \
+    "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+  install -Dm644 folk.png \
+    "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
+}

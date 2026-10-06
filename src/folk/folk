@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+export WINEPREFIX="${FOLK_WINEPREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/wineprefixes/folk}"
+export WINEARCH=win64
+export WINEDEBUG="${WINEDEBUG:--all}"
+export WINEDLLOVERRIDES="winemenubuilder.exe=d${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
+
+# Migrate an existing hand-made handler after the packaged app is launched once.
+if command -v xdg-mime >/dev/null 2>&1; then
+  current_handler=$(xdg-mime query default x-scheme-handler/folkapp 2>/dev/null || true)
+  case "$current_handler" in
+    ''|folkapp-wine-handler.desktop|wine-Programs-folk.desktop)
+      xdg-mime default folk.desktop x-scheme-handler/folkapp 2>/dev/null || true
+      ;;
+  esac
+fi
+
+exec wine /usr/lib/folk/folk.exe "$@"
