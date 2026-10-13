@@ -1,6 +1,6 @@
 # Check for a new Hermes Agent release and commit PKGBUILD updates.
 # Runs weekly (Monday 04:45 UTC) and can be triggered manually (Actions tab -> Run workflow).
-# Hermes uses date-based Git tags, while its package version is stored in pyproject.toml.
+# Use semver release tags; legacy date tags get their version from pyproject.toml.
 
 name: Update hermes-desktop
 
@@ -53,9 +53,14 @@ jobs:
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${REPO}/releases/latest")
-          tag=$(jq -er '.tag_name | select(type == "string" and length > 0)' <<< "$release")
+          if ! tag=$(jq -er '.tag_name | select(type == "string" and length > 0)' <<< "$release"); then
+            echo 'Unsupported upstream tag: missing or invalid release tag_name' >&2
+            exit 1
+          fi
 
-          if [[ ! "$tag" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          version_pattern='(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)'
+          legacy_tag_pattern='^v[0-9]{4}[.][0-9]{1,2}[.][0-9]{1,2}$'
+          if [[ ! "$tag" =~ $legacy_tag_pattern && ! "$tag" =~ ^v?$version_pattern$ ]]; then
             echo "Unsupported upstream tag: $tag" >&2
             exit 1
           fi
@@ -81,10 +86,18 @@ jobs:
             fi
           done
 
-          pyproject=$(tar -xOf "$archive" "$root_dir/pyproject.toml")
-          latest=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' <<< "$pyproject")
-          electron_version=$(tar -xOf "$archive" "$root_dir/apps/desktop/package.json" \
-            | jq -er '.build.electronVersion')
+          if [[ "$tag" =~ $legacy_tag_pattern ]]; then
+            pyproject=$(tar -xOf "$archive" "$root_dir/pyproject.toml")
+            latest=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' <<< "$pyproject")
+          else
+            latest=${tag#v}
+          fi
+          if ! electron_version=$(tar -xOf "$archive" "$root_dir/apps/desktop/package.json" \
+            | jq -er 'if .devDependencies.electron == null then .build.electronVersion
+                      else .devDependencies.electron end | select(type == "string")'); then
+            echo 'Invalid upstream Electron version: expected devDependencies.electron or legacy build.electronVersion string' >&2
+            exit 1
+          fi
           source_sha256=$(sha256sum "$archive" | awk '{print $1}')
 
           encoded_tag=$(jq -rn --arg tag "$tag" '$tag | @uri')
@@ -94,15 +107,15 @@ jobs:
             "https://api.github.com/repos/${REPO}/commits/${encoded_tag}" \
             | jq -er '.sha | select(test("^[0-9a-f]{40}$"))')
 
-          if [[ ! "$current" =~ ^[0-9]+([.][0-9]+)+$ ]]; then
+          if [[ ! "$current" =~ ^$version_pattern$ ]]; then
             echo "Current pkgver is invalid: $current" >&2
             exit 1
           fi
-          if [[ ! "$latest" =~ ^[0-9]+([.][0-9]+)+$ ]]; then
+          if [[ ! "$latest" =~ ^$version_pattern$ || "$latest" == '0.0.0' ]]; then
             echo "Upstream version is not a valid Arch pkgver: $latest" >&2
             exit 1
           fi
-          if [[ ! "$electron_version" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+          if [[ ! "$electron_version" =~ ^$version_pattern$ ]]; then
             echo "Invalid upstream Electron version: $electron_version" >&2
             exit 1
           fi
