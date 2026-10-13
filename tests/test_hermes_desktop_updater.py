@@ -39,6 +39,7 @@ class HermesUpdaterTest(unittest.TestCase):
         self.pkgbuild = self.work / "src/hermes-desktop/PKGBUILD"
         self.pkgbuild.parent.mkdir(parents=True)
         shutil.copyfile(REPO / "src/hermes-desktop/PKGBUILD", self.pkgbuild)
+        self.current("0.21.5", "v2026.9.24")
         self.bin = self.work / "bin"
         self.bin.mkdir()
         curl = self.bin / "curl"
