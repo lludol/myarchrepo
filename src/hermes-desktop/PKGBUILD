@@ -1,6 +1,6 @@
 pkgname=hermes-desktop
 pkgver=0.21.7
-pkgrel=1
+pkgrel=2
 pkgdesc='Native Hermes Agent desktop client (supports remote gateways)'
 arch=('x86_64')
 url='https://hermes-agent.nousresearch.com/desktop'
@@ -54,7 +54,15 @@ build() {
   npm run build --workspace apps/desktop
 
   cd apps/desktop
-  npm run builder -- --linux --dir -c.electronDist=/usr/lib/electron40
+
+  # Upstream's builder wrapper only admits Electron archives copied into its
+  # prepared-input directory. This package deliberately builds the app bundle
+  # against Arch's unpacked Electron distribution instead, so invoke the
+  # lock-pinned builder directly while retaining upstream's config and hooks.
+  NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=16384" \
+    node ../../node_modules/electron-builder/cli.js \
+      --linux --dir --config electron-builder.config.cjs --publish never \
+      -c.electronDist=/usr/lib/electron40
 }
 
 package() {
