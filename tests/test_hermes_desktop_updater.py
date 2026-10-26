@@ -71,7 +71,7 @@ class HermesUpdaterTest(unittest.TestCase):
     def fixture(self, tag="v0.21.7", version="0.0.0", package=None,
                 root=None, missing=None):
         if package is None:
-            package = {"devDependencies": {"electron": "40.10.2"}}
+            package = {"devDependencies": {"electron": "44.9.3"}}
         root = root or f"hermes-agent-{tag.removeprefix('v')}"
         files = {
             "pyproject.toml": f'[project]\nversion = "{version}"\n'.encode(),
@@ -94,7 +94,7 @@ class HermesUpdaterTest(unittest.TestCase):
                 self.archive.read_bytes(),
             f"https://api.github.com/repos/NousResearch/hermes-agent/commits/{tag}":
                 json.dumps({"sha": COMMIT}).encode(),
-            "https://www.electronjs.org/headers/v40.10.2/node-v40.10.2-headers.tar.gz":
+            "https://www.electronjs.org/headers/v44.9.3/node-v44.9.3-headers.tar.gz":
                 b"deterministic Electron headers fixture\n",
         }
         fixtures = {}
@@ -125,7 +125,7 @@ class HermesUpdaterTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(values["latest"], latest)
         self.assertEqual(values["update_available"], update)
-        self.assertEqual(values["electron_version"], "40.10.2")
+        self.assertEqual(values["electron_version"], "44.9.3")
         self.assertEqual(values["commit"], COMMIT)
         self.assertEqual(values["source_sha256"], hashlib.sha256(self.archive.read_bytes()).hexdigest())
         return values
@@ -136,11 +136,11 @@ class HermesUpdaterTest(unittest.TestCase):
 
     def test_legacy_date_tag_and_electron_fallback(self):
         self.fixture(tag="v2026.9.25", version="0.21.6",
-                     package={"build": {"electronVersion": "40.10.2"}})
+                     package={"build": {"electronVersion": "44.9.3"}})
         self.metadata("0.21.6", "true")
 
     def test_dev_dependency_takes_precedence(self):
-        self.fixture(package={"devDependencies": {"electron": "40.10.2"},
+        self.fixture(package={"devDependencies": {"electron": "44.9.3"},
                               "build": {"electronVersion": "39.0.0"}})
         self.metadata("0.21.7", "true")
 
@@ -174,7 +174,7 @@ class HermesUpdaterTest(unittest.TestCase):
                              ("v2026.9.25", "invalid"), ("v2026.9.25", "0.0.0")]:
             with self.subTest(tag=tag, version=version):
                 self.fixture(tag=tag, version=version,
-                             package={"build": {"electronVersion": "40.10.2"}})
+                             package={"build": {"electronVersion": "44.9.3"}})
                 result, values = self.run_step(METADATA)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertRegex(result.stderr, "Unsupported upstream tag|Upstream version")
@@ -192,10 +192,19 @@ class HermesUpdaterTest(unittest.TestCase):
                 self.assertEqual(values, {})
 
     def test_electron_major_guard(self):
-        result, values = self.run_step(HEADERS, ELECTRON_VERSION="41.0.0")
+        result, values = self.run_step(HEADERS, ELECTRON_VERSION="45.0.0")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Electron major changed", result.stderr)
         self.assertEqual(values, {})
+
+    def test_packaged_electron_is_consistent(self):
+        pkgbuild = self.pkgbuild.read_text()
+        electron_version = re.search(r"^_electronver='([^']+)'$", pkgbuild, re.M).group(1)
+        electron_major = electron_version.split(".", 1)[0]
+        self.assertIn(f"  'electron{electron_major}'\n", pkgbuild)
+        self.assertIn(f"-c.electronDist=/usr/lib/electron{electron_major}\n", pkgbuild)
+        launcher = (REPO / "src/hermes-desktop/hermes-desktop").read_text()
+        self.assertRegex(launcher, rf"(?m)^exec electron{electron_major} ")
 
     def test_pkgbuild_update_and_checksums(self):
         self.fixture()
@@ -212,7 +221,7 @@ class HermesUpdaterTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         updated = self.pkgbuild.read_text()
         for line in ["pkgver=0.21.7", "pkgrel=1", "_tag='v0.21.7'",
-                     "_electronver='40.10.2'", f"_commit='{COMMIT}'"]:
+                     "_electronver='44.9.3'", f"_commit='{COMMIT}'"]:
             self.assertIn(line + "\n", updated)
         hashes = re.findall(r"'([0-9a-f]{64})'", updated)
         self.assertEqual(hashes[:2], [metadata["source_sha256"], headers["sha256"]])

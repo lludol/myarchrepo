@@ -1,12 +1,12 @@
 pkgname=hermes-desktop
-pkgver=0.22.2
+pkgver=0.22.5
 pkgrel=1
 pkgdesc='Native Hermes Agent desktop client (supports remote gateways)'
 arch=('x86_64')
 url='https://hermes-agent.nousresearch.com/desktop'
 license=('MIT')
 depends=(
-  'electron40'
+  'electron44'
 )
 makedepends=(
   'nodejs'
@@ -18,18 +18,18 @@ optdepends=(
 )
 options=('!debug')
 
-_tag='v0.22.2'
-_electronver='40.10.2'
-_commit='d923a5eb487a17c0a68801bba9ef0f56c81040a8'
+_tag='v0.22.5'
+_electronver='44.9.3'
+_commit='bf0203a794a07aac3ff764972ab9087baa4e4f4e'
 source=(
   "${pkgname}-${pkgver}.tar.gz::https://github.com/NousResearch/hermes-agent/archive/refs/tags/${_tag}.tar.gz"
   "electron-headers-${_electronver}.tar.gz::https://www.electronjs.org/headers/v${_electronver}/node-v${_electronver}-headers.tar.gz"
   'hermes-desktop'
   'hermes-desktop.desktop'
 )
-sha256sums=('77d2c763a3bd5133bfb3e327986c987dba249e14988b92919ef726d389c6b9d2'
-            'de1d91f029485ac5bb3eb542c2e57348dfd4d1714cf9caa940c49dba66306563'
-            '6526ce2e45480e2771d32b63720290477fffb32becb6c5ac0e5b949b6c463a89'
+sha256sums=('a8f67e5ec14fea681acef6cc7ff1553f002bb6101fd2df22bfdd4b7eecc54eb2'
+            '5f75ae1e70e69442c9d23f7d984e8ca211e49c5bee2298ca2d84d3c75c640710'
+            '4ec069db1324377ded973403671dec9f5ad805ec33940976829463d16259c252'
             '540c3afcdaca4ecb266a7db1b79e6d5cbdef2944fffd056d85064b9eea2c5fdd')
 
 prepare() {
@@ -53,6 +53,10 @@ build() {
   export GITHUB_SHA="${_commit}"
   npm run build --workspace apps/desktop
 
+  # This source-build freshness receipt is not used by packaged clients and
+  # contains absolute paths from the temporary build directory.
+  rm -f apps/desktop/dist/hermes-build.json
+
   cd apps/desktop
 
   # Upstream's builder wrapper only admits Electron archives copied into its
@@ -62,7 +66,7 @@ build() {
   NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=16384" \
     node ../../node_modules/electron-builder/cli.js \
       --linux --dir --config electron-builder.config.cjs --publish never \
-      -c.electronDist=/usr/lib/electron40
+      -c.electronDist=/usr/lib/electron44
 }
 
 package() {
