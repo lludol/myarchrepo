@@ -1,5 +1,5 @@
 pkgname=folk
-pkgver=2026.10.210721
+pkgver=2026.11.307
 pkgrel=1
 pkgdesc='Collaborative contact management desktop app (Wine)'
 arch=('x86_64')
@@ -22,7 +22,7 @@ source=(
   'folk.desktop'
 )
 sha256sums=(
-  '1790bfadf315d7ec8dbda57460eee86663d27a34d3bc2348d182429dcfe37309'
+  'ac03d00e4009a2d8c49dce99760bddbf3f5ec02135fb6ad830c229832f6abfd9'
   'f413826a72966cb5c9e432dee2cad1637c3d38721e163ccbfea4ba9e4461faad'
   'b348101ace4108f4008c6aa3b4a3533777f1c0783bdb8f233eae995cd4e382a8'
 )
