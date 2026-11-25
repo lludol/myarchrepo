@@ -1,11 +1,11 @@
 pkgname=cursor-bin
 pkgver=3.32.4
-pkgrel=1
+pkgrel=2
 pkgdesc='AI-first coding environment'
 arch=('x86_64')
 url="https://www.cursor.com"
 license=('LicenseRef-Cursor_EULA')
-_electron=electron
+_electron=electron43
 depends=(xdg-utils ripgrep $_electron nodejs
   'gcc-libs' 'hicolor-icon-theme' 'libxkbfile')
 options=(!strip !debug) # Don't break ext of VSCode
