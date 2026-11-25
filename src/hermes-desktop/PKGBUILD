@@ -10,7 +10,7 @@ depends=(
 )
 makedepends=(
   'nodejs'
-  'npm'
+  'pnpm'
   'python'
 )
 optdepends=(
@@ -35,13 +35,18 @@ sha256sums=('875e633ae5b3c6349c1bcffc18c0476518fbe5dead355e4aa09ad827ebffce0c'
 prepare() {
   cd "hermes-agent-${_tag#v}"
 
-  # Keep dependency installation non-interactive and avoid downloading the
-  # bundled Electron runtime; the package uses Arch's electron40 instead.
-  npm ci --ignore-scripts --cache "${srcdir}/npm-cache"
+  # Upstream installs with pnpm (pnpm-lock.yaml). Keep dependency installation
+  # non-interactive and avoid downloading the bundled Electron runtime; the
+  # package uses Arch's electron44 instead. --ignore-scripts also skips the
+  # root preinstall guard, which demands the exact pnpm version pinned in
+  # pm/lock.json.
+  pnpm install --frozen-lockfile --ignore-scripts \
+    --store-dir "${srcdir}/pnpm-store" \
+    --filter . --filter 'hermes...'
 
-  # get-windows is optional and has no Linux build. Leaving its binding.gyp in
-  # node_modules makes electron-rebuild attempt (and fail) to compile it.
-  rm -rf node_modules/get-windows
+  # get-windows has no Linux build. Leaving its binding.gyp in node_modules
+  # makes electron-rebuild attempt (and fail) to compile it.
+  rm -rf apps/desktop/node_modules/get-windows node_modules/.pnpm/get-windows@*
 }
 
 build() {
@@ -51,7 +56,7 @@ build() {
   # headers keep this step offline and reproducible.
   export npm_config_nodedir="${srcdir}/node_headers"
   export GITHUB_SHA="${_commit}"
-  npm run build --workspace apps/desktop
+  pnpm --filter hermes run build
 
   # This source-build freshness receipt is not used by packaged clients and
   # contains absolute paths from the temporary build directory.
@@ -64,7 +69,7 @@ build() {
   # against Arch's unpacked Electron distribution instead, so invoke the
   # lock-pinned builder directly while retaining upstream's config and hooks.
   NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=16384" \
-    node ../../node_modules/electron-builder/cli.js \
+    node node_modules/electron-builder/cli.js \
       --linux --dir --config electron-builder.config.cjs --publish never \
       -c.electronDist=/usr/lib/electron44
 }
