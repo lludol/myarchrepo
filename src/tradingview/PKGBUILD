@@ -1,17 +1,18 @@
-: ${_electron_version=41}
-
 _pkgname="tradingview"
 pkgname="$_pkgname"
 pkgver=3.5.1
-pkgrel=1
+pkgrel=2
 pkgdesc='Charting platform for traders and investors'
 arch=('x86_64')
 url="https://www.tradingview.com/desktop/"
 license=('LicenseRef-TradingView')
 
+# ships its own Electron (snap bundles Electron 45; native modules need its ABI)
 depends=(
-  "electron${_electron_version}"
+  'alsa-lib'
+  'gtk3'
   'libsecret'
+  'nss'
 )
 makedepends=(
   'html-xml-utils'
@@ -46,9 +47,11 @@ prepare() {
 }
 
 package() {
-  # asar
-  mkdir -pm755 "$pkgdir/usr/lib/$_pkgname"
-  cp -r "$_pkgsrc/resources/"* "$pkgdir/usr/lib/$_pkgname/"
+  # app (bundled electron)
+  install -dm755 "$pkgdir/opt/$_pkgname"
+  cp -r --no-preserve=ownership \
+    "$_pkgsrc/"{locales,resources,"$_pkgname",chrome_crashpad_handler,*.pak,*.bin,*.dat,*.so,*.so.*,vk_swiftshader_icd.json} \
+    "$pkgdir/opt/$_pkgname/"
 
   # launcher
   sed -E -e '/^Comment=/d' \
@@ -88,6 +91,6 @@ export ELECTRON_IS_DEV
 : \${ELECTRON_FORCE_IS_PACKAGED:=true}
 export ELECTRON_FORCE_IS_PACKAGED
 
-exec electron${_electron_version} "\${flags[@]}" "/usr/lib/$_pkgname/app.asar" "\$@"
+exec "/opt/$_pkgname/$_pkgname" "\${flags[@]}" "\$@"
 END
 }
