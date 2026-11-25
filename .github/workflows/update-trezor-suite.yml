@@ -49,12 +49,12 @@ jobs:
           PKGDIR="src/trezor-suite"
 
           # Download AppImage
-          curl -sSLo "$PKGDIR/AppImage" "https://github.com/trezor/trezor-suite/releases/download/v${latest}/Trezor-Suite-${latest}-linux-x86_64.AppImage"
+          curl -fsSLo "$PKGDIR/AppImage" "https://github.com/trezor/trezor-suite/releases/download/v${latest}/Trezor-Suite-${latest}-linux-x86_64.AppImage"
           sha_appimage=$(sha512sum -b "$PKGDIR/AppImage" | awk '{ print $1 }')
 
           # Download PNG icon and LICENSE from master
-          curl -sSLo "$PKGDIR/appIcon.png" "https://raw.githubusercontent.com/trezor/trezor-suite/master/suite-native/app/assets/production/appIcon.png"
-          curl -sSLo "$PKGDIR/LICENSE.downloaded.md" "https://raw.githubusercontent.com/trezor/trezor-suite/master/LICENSE.md"
+          curl -fsSLo "$PKGDIR/appIcon.png" "https://raw.githubusercontent.com/trezor/trezor-suite/master/suite-native-app/app/assets/production/appIcon.png"
+          curl -fsSLo "$PKGDIR/LICENSE.downloaded.md" "https://raw.githubusercontent.com/trezor/trezor-suite/master/LICENSE.md"
           sha_png=$(sha512sum -b "$PKGDIR/appIcon.png" | awk '{ print $1 }')
           sha_license=$(sha512sum -b "$PKGDIR/LICENSE.downloaded.md" | awk '{ print $1 }')
 
