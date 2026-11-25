@@ -6,6 +6,8 @@
 /src/*/*.AppImage*
 /src/*/*.deb
 /src/*/*.exe
+/src/*/*.tgz
+/src/*/*.zip
 /src/*/*.tmp
 /src/*/.cache/
 /src/*/.*.swp
