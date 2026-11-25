@@ -52,7 +52,7 @@ runs:
       run: echo "dir=$(dirname "${{ inputs.pkgbuild_path }}")" >> "$GITHUB_OUTPUT"
 
     - name: Update PKGBUILD
-      uses: heyhusen/archlinux-package-action@v3.0.0
+      uses: heyhusen/archlinux-package-action@v3.0.1
       with:
         path: ${{ steps.pkgdir.outputs.dir }}
         pkgver: ${{ inputs.version }}
