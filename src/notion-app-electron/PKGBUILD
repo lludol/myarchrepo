@@ -5,10 +5,10 @@
 
 pkgname=notion-app-electron
 pkgver=7.44.1
-_bettersqlite3ver=12.9.0
+_bettersqlite3ver=13.0.1 # match node_modules/better-sqlite3 in app.asar; 13.x ships N-API prebuilds (Electron-ABI independent)
 _bufferutilver=4.0.9
-_elecronver=143 # whenever update the bettersqlite, update this one by one to try the proper version.
-pkgrel=1
+_electronver=45.3.1 # match "electron" in app.asar package.json; Arch has no electron45, so bundle upstream build
+pkgrel=3
 pkgdesc="Your connected workspace for wiki, docs & projects"
 arch=(x86_64)
 url=https://www.notion.so/desktop
@@ -18,7 +18,9 @@ depends=(
 	gcc-libs
 	glibc
 	hicolor-icon-theme
-	electron40
+	alsa-lib
+	gtk3
+	nss
 )
 makedepends=(
 	p7zip
@@ -28,20 +30,23 @@ install=.install
 
 source=(
 	https://desktop-release.notion-static.com/Notion%20Setup%20${pkgver}.exe
-	https://github.com/WiseLibs/better-sqlite3/releases/download/v${_bettersqlite3ver}/better-sqlite3-v${_bettersqlite3ver}-electron-v${_elecronver}-linux-x64.tar.gz
+	https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-${_bettersqlite3ver}.tgz
+	https://github.com/electron/electron/releases/download/v${_electronver}/electron-v${_electronver}-linux-x64.zip
 	https://github.com/websockets/bufferutil/releases/download/v${_bufferutilver}/v${_bufferutilver}-linux-x64.tar
 	notion-app
 	notion.desktop
 	notion.png
 )
 sha256sums=('d287a31c78b706e18327d43fce511d9a26fef458cb0187d2a6ff6308b1618f3e'
-            'ebc8c2a8b71ec46c67ace20b0a291058d603a93aaf17c8fd25b63ee05a129e04'
+            '92935ff8280f933aff78f87e04eb718a21af003aec4e5bd0076f287aa1709da4'
+            'c61d44206f8bd533d30310840b5baaa7fd0e8421cd711b8d1f719a7a336cbce7'
             '2139aae79c5a4fd4d07467bd9b7872ea109483aa43b3dfd6c8d3725ccba009be'
-            '3e4defd9e3823c25fc0b01308b6fde271c430ea749400474dbe2ee9ccb736ecf'
+            '0b9b8bd699f2cd2727a294f5b9564bb1a9e5a42af2438a6d05687d5e571d9ef3'
             '19a5f973f1e9291081aa05512e07c61447e8c30e1a43dd22d0cc1090837d1e19'
             'da801d659d8916320e0d76c8c62154e97a1d44f71762f2a18d1c8c185624d5be')
 
-options=(!emptydirs)
+noextract=(electron-v${_electronver}-linux-x64.zip)
+options=(!emptydirs !strip !debug)
 
 prepare() {
 	# extracting app.asar from installer with 7z and ignoring errors
@@ -52,7 +57,11 @@ prepare() {
 	# extracting resources from app.asar
 	asar e "$srcdir/resources/app.asar" "$srcdir/asar_patched"
 	# replacing better_sqlite3 release in the patched resources
-	install -vDm644 "$srcdir/build/Release/better_sqlite3.node" -t "$srcdir/asar_patched/node_modules/better-sqlite3/build/Release/"
+	install -vDm644 "$srcdir/package/prebuilds/linux-x64.node" -t "$srcdir/asar_patched/node_modules/better-sqlite3/prebuilds/"
+	install -vDm644 "$srcdir/package/prebuilds/linux-x64.node" "$srcdir/asar_patched/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+	# bundled electron
+	mkdir -p "$srcdir/electron"
+	bsdtar -xf "$srcdir/electron-v${_electronver}-linux-x64.zip" -C "$srcdir/electron"
 	# replacing bufferutil release in the patched resources
 	install -vDm644 "$srcdir/linux-x64/bufferutil.node" "$srcdir/asar_patched/node_modules/bufferutil/build/Release/bufferutil.node"
 	# removing some unnecessary files (keeping them in this version to see if it improves stability)
@@ -60,21 +69,38 @@ prepare() {
 	# rm "$srcdir/asar_patched/node_modules/better-sqlite3/build/Release/test_extension.node"
 	# adding tray icon to the unpacked resources
 	install -vDm644 "$srcdir/notion.png" "$srcdir/asar_patched/.webpack/main/trayIcon.png"
-	# fixing tray icon and right click menu
-	sed -i 's|this.tray.on("click",(()=>{this.onClick()}))|this.tray.setContextMenu(this.trayMenu),this.tray.on("click",(()=>{this.onClick()}))|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	sed -i 's|getIcon(){[^}]*}|getIcon(){return require("path").resolve(__dirname, "trayIcon.png");}|g' "$srcdir/asar_patched/.webpack/main/index.js"
+
+	# --- patches to the minified main process ---
+	# Every patch must match, otherwise the build fails: minified code changes between
+	# Notion releases and a silently skipped patch (or a half-matched one) breaks the app.
+	local js="$srcdir/asar_patched/.webpack/main/index.js"
+	_patch() { # literal search/replace, fails if the search string is absent
+		grep -qF -- "$1" "$js" || { error "Notion patch target not found: $1"; return 1; }
+		SEARCH="$1" REPLACE="$2" perl -0777 -pi -e 's/\Q$ENV{SEARCH}\E/$ENV{REPLACE}/g' "$js"
+	}
+
+	# use our tray icon (upstream looks for it in process.resourcesPath, which is the bundled electron dir).
+	# getIcon() body has nested braces (template literals), so match balanced braces.
+	perl -0777 -pi -e 's/getIcon\(\)(\{(?:[^{}]++|(?1))*\})/getIcon(){return require("path").resolve(__dirname, "trayIcon.png");}/g' "$js"
+	grep -qF 'getIcon(){return require("path").resolve(__dirname, "trayIcon.png");}' "$js" || { error "Notion patch failed: getIcon"; return 1; }
 	# fake the useragent as windows to fix the spellchecker languages selector and other issues
-	sed -i 's|e.setUserAgent(`${e.getUserAgent()} WantsServiceWorker`),|e.setUserAgent(`${e.getUserAgent().replace("Linux", "Windows")} WantsServiceWorker`),|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	# fully disabling auto updates
-	sed -i 's|if("darwin"===process.platform){const e=l.systemPreferences?.getUserDefault(C,"boolean"),t=M.Store.getState().app.preferences?.isAutoUpdaterDisabled,r=M.Store.getState().app.preferences?.isAutoUpdaterOSSupportBypass,n=(0,y.isOsUnsupportedForAutoUpdates)();return Boolean(e\|\|t\|\|!r&&n)}return!1|return!0|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	# avoid running duplicated instances, fixes url opening
-	sed -i 's|handleOpenUrl);else if("win32"===process.platform)|handleOpenUrl);else if("linux"===process.platform)|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	sed -i 's|async function(){(0,E.setupCrashReporter)(),|o.app.requestSingleInstanceLock() ? async function(){(0,E.setupCrashReporter)(),|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	sed -i 's|setupCleanup)()}()}()|setupCleanup)()}()}() : o.app.quit();|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	# use the windows version of the tray menu
-	sed -i 's|r="win32"===process.platform?function(e,t)|r="linux"===process.platform?function(e,t)|g' "$srcdir/asar_patched/.webpack/main/index.js"
-	# this can disable app menu when the options won't work. disbled in the current version because it's working now, but it's here for future reference
-	# sed -i 's|Menu.setApplicationMenu(p(e))|Menu.setApplicationMenu(null)|g' "$srcdir/asar_patched/.webpack/main/index.js"
+	_patch 'e.setUserAgent(`${e.getUserAgent()} WantsServiceWorker`),' \
+		'e.setUserAgent(`${e.getUserAgent().replace("Linux", "Windows")} WantsServiceWorker`),'
+	# use the windows version of the tray menu (app items + troubleshooting submenu)
+	_patch 'return"win32"===process.platform?[T(e,t)]:' 'return"linux"===process.platform?[T(e,t)]:'
+	_patch 'o="win32"===process.platform?[{type:"separator"},...(0,y.filterMenuByKind)(' \
+		'o="linux"===process.platform?[{type:"separator"},...(0,y.filterMenuByKind)('
+
+	# No longer needed as of 7.44 (handled upstream on linux):
+	# - tray right-click menu: upstream calls tray.setContextMenu() on linux
+	# - auto updates: upstream disables them on linux unless running as a Flatpak
+	# - single instance / notion:// url opening: upstream has a linux requestSingleInstanceLock + second-instance handler
+
+	# this can disable app menu when the options won't work. disabled in the current version because it's working now, but it's here for future reference
+	# _patch 'Menu.setApplicationMenu(p(e))' 'Menu.setApplicationMenu(null)'
+
+	# catch any patch that produced invalid JS (node comes with asar)
+	node --check "$js"
 	# repacking asar with all the patches
 	asar p "$srcdir/asar_patched" "$srcdir/app.asar" --unpack *.node
 }
@@ -87,6 +113,7 @@ package() {
 	install -d "$lib"
 	cp "$srcdir/app.asar" "$lib"
 	cp "$srcdir/app.asar.unpacked" "$lib" -r
+	cp -r "$srcdir/electron" "$lib/electron"
 	install -vDm644 "$srcdir/asar_patched/package.json" "$lib/package.json"
 	install -vDm755 notion-app -t "$usr/bin"
 	install -vDm644 "$srcdir/notion.desktop" -t "$share/applications"
